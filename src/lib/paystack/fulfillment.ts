@@ -2,9 +2,10 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const PAYSTACK_FULFILLMENT_RPC = "commerce_fulfill_verified_paystack_charge";
+const PAYSTACK_FULFILLMENT_RPC = "commerce_fulfill_verified_paystack_charge_v2";
 
 export type PaystackFulfillmentInput = {
+  accessGrantId: string;
   accessTokenExpiresAt: Date;
   accessTokenHash: string;
   payloadHash: string;
@@ -37,6 +38,7 @@ export async function fulfillVerifiedPaystackCharge(
 ): Promise<PaystackFulfillmentResult> {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase.rpc(PAYSTACK_FULFILLMENT_RPC, {
+    p_access_grant_id: input.accessGrantId,
     p_access_token_expires_at: input.accessTokenExpiresAt.toISOString(),
     p_access_token_hash: input.accessTokenHash,
     p_payload_hash: input.payloadHash,

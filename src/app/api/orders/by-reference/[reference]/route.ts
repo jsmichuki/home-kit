@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, timingSafeEqual } from "node:crypto";
 
+import { createAccessToken } from "@/lib/access-token";
 import {
   isValidConfirmationSecret,
   isValidPaymentReference,
@@ -13,7 +14,12 @@ type OrderStatusRow = {
   confirmation_secret_hash: string | null;
   customer_email: string;
   entitlement_snapshot: unknown;
+  id: string;
   status: string;
+};
+
+type ActiveGrantRow = {
+  id: string;
 };
 
 const SAFE_RESPONSE_HEADERS = {
@@ -59,16 +65,37 @@ function fulfilledGuideCount(snapshot: unknown) {
   return Array.isArray(snapshot) ? snapshot.length : 0;
 }
 
-function toSafeStatus(order: OrderStatusRow): PaymentConfirmationResponse {
+async function getValidatedDownloadPath(order: OrderStatusRow) {
+  try {
+    const { data: untypedGrant, error } = await createSupabaseAdminClient()
+      .from("commerce_access_grants")
+      .select("id")
+      .eq("order_id", order.id)
+      .is("revoked_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    const grant = untypedGrant as ActiveGrantRow | null;
+
+    if (error || !grant?.id) {
+      return null;
+    }
+
+    return `/downloads/${encodeURIComponent(createAccessToken(grant.id))}`;
+  } catch {
+    // Access is always independently checked by the download route. A
+    // configuration problem here must not leak a fulfilled order to callers.
+    return null;
+  }
+}
+
+async function toSafeStatus(order: OrderStatusRow): Promise<PaymentConfirmationResponse> {
   switch (order.status) {
     case "fulfilled":
       return {
         status: "fulfilled",
         guideCount: fulfilledGuideCount(order.entitlement_snapshot),
         maskedEmail: maskEmail(order.customer_email),
-        // Do not derive an access URL from the transaction reference. Section 10
-        // will add a grant-validated path when secure download access exists.
-        downloadPath: null,
+        downloadPath: await getValidatedDownloadPath(order),
       };
     case "failed":
     case "refunded":
@@ -102,7 +129,7 @@ export async function GET(
   try {
     const { data: untypedData, error } = await createSupabaseAdminClient()
       .from("commerce_orders")
-      .select("status, customer_email, entitlement_snapshot, confirmation_secret_hash")
+      .select("id, status, customer_email, entitlement_snapshot, confirmation_secret_hash")
       .eq("paystack_reference", reference)
       .maybeSingle();
     const data = untypedData as OrderStatusRow | null;
@@ -111,7 +138,7 @@ export async function GET(
       return unknownResponse();
     }
 
-    return Response.json(toSafeStatus(data), { headers: SAFE_RESPONSE_HEADERS });
+    return Response.json(await toSafeStatus(data), { headers: SAFE_RESPONSE_HEADERS });
   } catch {
     // Do not turn a configuration or database error into an order-discovery
     // oracle. The generic state gives the customer a support path instead.

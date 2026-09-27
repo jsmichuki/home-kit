@@ -13,6 +13,8 @@ import { GET } from "@/app/api/orders/by-reference/[reference]/route";
 
 const reference = "hkt_4pX9Xq21bL8vK3mN";
 const confirmation = "Ba9tJwk9NhHTB7PRU1_3xx5EiGCqERvhfA9th4YHvmQ";
+const grantId = "1b9264f3-a55d-4e3a-a80a-810c3787d1f9";
+const previousAccessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
 
 function confirmationHash(value = confirmation) {
   return createHash("sha256").update(value).digest("hex");
@@ -45,6 +47,11 @@ describe("GET /api/orders/by-reference/[reference]", () => {
   });
 
   afterEach(() => {
+    if (previousAccessTokenSecret === undefined) {
+      delete process.env.ACCESS_TOKEN_SECRET;
+    } else {
+      process.env.ACCESS_TOKEN_SECRET = previousAccessTokenSecret;
+    }
     vi.restoreAllMocks();
   });
 
@@ -97,6 +104,43 @@ describe("GET /api/orders/by-reference/[reference]", () => {
       maskedEmail: "b***@example.com",
       downloadPath: null,
     });
+  });
+
+  it("provides a download path only after the confirmation secret and active grant both match", async () => {
+    process.env.ACCESS_TOKEN_SECRET = "access-token-test-secret-that-is-long-enough";
+    const order = {
+      confirmation_secret_hash: confirmationHash(),
+      customer_email: "buyer@example.com",
+      entitlement_snapshot: [{ guideId: "guide-1" }],
+      id: "d0cbb4bd-7e8e-482a-a1ba-e9e54abd1a88",
+      status: "fulfilled",
+    };
+    const orderMaybeSingle = vi.fn().mockResolvedValue({ data: order, error: null });
+    const orderEq = vi.fn().mockReturnValue({ maybeSingle: orderMaybeSingle });
+    const activeGrantMaybeSingle = vi.fn().mockResolvedValue({ data: { id: grantId }, error: null });
+    const activeGrantGt = vi.fn().mockReturnValue({ maybeSingle: activeGrantMaybeSingle });
+    const activeGrantIs = vi.fn().mockReturnValue({ gt: activeGrantGt });
+    const activeGrantEq = vi.fn().mockReturnValue({ is: activeGrantIs });
+
+    mocks.createSupabaseAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "commerce_orders") {
+          return { select: vi.fn().mockReturnValue({ eq: orderEq }) };
+        }
+
+        return { select: vi.fn().mockReturnValue({ eq: activeGrantEq }) };
+      }),
+    });
+
+    const response = await GET(request(), context());
+    const body = await response.json();
+
+    expect(body).toMatchObject({
+      guideCount: 1,
+      maskedEmail: "b***@example.com",
+      status: "fulfilled",
+    });
+    expect(body.downloadPath).toMatch(/^\/downloads\/v1\./);
   });
 
   it("keeps a paid but not fulfilled order pending", async () => {

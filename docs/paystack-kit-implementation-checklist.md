@@ -177,58 +177,59 @@ Use this checklist alongside [the checkout and delivery plan](./paystack-kit-che
 
 ## 9. Resend transactional email and event tracking
 
-- [x] Create and verify the Resend sending domain and all required DNS records.
-- [x] Store `RESEND_API_KEY` and `RESEND_FROM_EMAIL` only in server side deployment configuration.
+- [ ] Create and verify the Resend sending domain and all required DNS records.
+- [ ] Store `RESEND_API_KEY` and `RESEND_FROM_EMAIL` only in server side deployment configuration.
 - [x] Configure a named sender such as `Home Kit <home-kit@astralrefine.com>`.
-- [ ] Build a responsive HTML delivery email and plain text alternative.
-- [ ] Include purchased guide summary, total, currency, receipt or transaction reference, access button, fallback URL, expiry, and support contact.
-- [ ] Avoid using the delivery email as marketing consent.
-- [ ] Use a deterministic initial Resend idempotency key such as `delivery/<order-id>/<grant-version>`.
-- [ ] Record the idempotency key, Resend email ID, provider response, attempt count, and send time in `email_deliveries`.
-- [ ] Reuse the same idempotency key for uncertain or immediate retry attempts.
-- [ ] Use a newly recorded retry key only when the original key has expired and database state supports a new attempt.
-- [ ] Configure `POST /api/webhooks/resend`.
-- [ ] Verify Resend webhook signatures before writing delivery events.
-- [ ] Record Resend `delivered`, `delivery_delayed`, `bounced`, `complained`, `failed`, and `suppressed` outcomes.
-- [ ] Make duplicate Resend events safe through the provider event ID constraint.
+- [x] Build a responsive HTML delivery email and plain text alternative.
+- [x] Include purchased guide summary, total, currency, receipt or transaction reference, access button, fallback URL, expiry, and support contact.
+- [x] Avoid using the delivery email as marketing consent.
+- [x] Use a deterministic initial Resend idempotency key such as `delivery/<order-id>/<grant-version>`.
+- [x] Record the idempotency key, Resend email ID, provider response, attempt count, and send time in `email_deliveries`.
+- [x] Reuse the same idempotency key for uncertain or immediate retry attempts.
+- [x] Use a newly recorded retry key only when the original key has expired and database state supports a new attempt.
+- [x] Configure `POST /api/webhooks/resend`.
+- [x] Verify Resend webhook signatures before writing delivery events.
+- [x] Record Resend `delivered`, `delivery_delayed`, `bounced`, `complained`, `failed`, and `suppressed` outcomes.
+- [x] Make duplicate Resend events safe through the provider event ID constraint.
 - [ ] Raise a support alert for permanent delivery failures without revoking valid download access.
 - [ ] Test the email in major clients and on mobile.
 - [ ] Test a successful send, uncertain API response, duplicate send request, delayed event, bounce, complaint, suppression, failed event, and webhook replay.
 
 ## 10. Secure access links and download experience
 
-- [ ] Generate opaque, cryptographically secure access tokens for each fulfilled order.
-- [ ] Store only access token hashes in Supabase Postgres.
-- [ ] Set issuance, expiry, revocation, and last access timestamps on each grant.
-- [ ] Implement `/downloads/<opaque-token>`.
-- [ ] Lookup and validate the token hash, order fulfillment status, grant activity, and expiry on the server.
-- [ ] Use a generic safe failure response for invalid or guessed links.
-- [ ] Show only the guides and versions purchased by the validated order.
-- [ ] Include title, concise description, format, size, and a dedicated download action for each guide.
+- [x] Generate opaque, cryptographically secure access tokens for each fulfilled order.
+- [x] Store only access token hashes in Supabase Postgres.
+- [x] Set issuance, expiry, revocation, and last access timestamps on each grant.
+- [x] Implement `/downloads/<opaque-token>`.
+- [x] Lookup and validate the token hash, order fulfillment status, grant activity, and expiry on the server.
+- [x] Use a generic safe failure response for invalid or guessed links.
+- [x] Show only the guides and versions purchased by the validated order.
+- [x] Include title, concise description, format, size, and a dedicated download action for each guide.
 - [ ] Offer `Download all` only if the combined archive is built, complete, and tested.
-- [ ] Create the file's short lived Supabase Storage signed URL after each permitted download request.
-- [ ] Record minimal download events without logging the full opaque access token.
-- [ ] Add expiry, resend, support, and main site paths to the download page.
-- [ ] Implement a friendly expired or revoked link state with a recovery path.
-- [ ] Implement `POST /api/access/resend`.
-- [ ] Always return a neutral response from the resend request form to avoid account enumeration.
-- [ ] Send only to fulfilled orders and rate limit requests by email, IP, and time window.
-- [ ] Reuse an active grant for self service resend, or rotate and revoke access only through a deliberate support action.
+- [x] Create the file's short lived Supabase Storage signed URL after each permitted download request.
+- [x] Record minimal download events without logging the full opaque access token.
+- [x] Add expiry, resend, support, and main site paths to the download page.
+- [x] Implement a friendly expired or revoked link state with a recovery path.
+- [x] Implement `POST /api/access/resend`.
+- [x] Always return a neutral response from the resend request form to avoid account enumeration.
+- [x] Send only to fulfilled orders and rate limit requests by email, IP, and time window.
+- [x] Reuse an active grant for self service resend, or rotate and revoke access only through a deliberate support action.
 - [ ] Provide an internal, access controlled support process to find orders, resend delivery, and revoke a compromised grant.
-- [ ] Test valid link, multiple guides, guessed link, expired link, revoked link, missing entitlement, repeated downloads, direct file URL, self service resend, and rate limit behaviour.
+- [x] Test valid link, multiple guides, guessed link, expired link, revoked link, missing entitlement, repeated downloads, direct file URL, self service resend, and rate limit behaviour.
 
 ## 11. Observability, privacy, and operations
 
-- [ ] Use HTTPS for every application, webhook, and callback endpoint.
-- [ ] Ensure no card data is stored or logged.
-- [ ] Store only the buyer data needed for receipt, delivery, support, and legal obligations.
-- [ ] Redact opaque access tokens, payment secrets, email provider keys, and full sensitive payloads from logs and analytics.
+- [x] Ensure no card data is stored or logged.
+- [x] Store only the buyer data needed for receipt, delivery, support, and legal obligations.
+- [x] Redact opaque access tokens, payment secrets, email provider keys, and full sensitive payloads from logs and analytics.
 - [ ] Monitor Paystack webhook receipt, verification failures, and retry health.
 - [ ] Monitor outbox backlog, worker failures, and stalled jobs.
 - [ ] Monitor Resend sends, bounces, complaints, suppressions, and delivery failures.
 - [ ] Monitor signed URL failures, invalid token lookups, and download errors.
 - [ ] Alert for payment amount or currency mismatches and repeated invalid webhook signatures.
-- [ ] Document incident response for a payment issue, email outage, leaked access link, and compromised secret.
+- [x] Document incident response for a payment issue, email outage, leaked access link, and compromised secret.
+- [x] Add a tested server only redaction helper and dependency free tracked-file secret scan.
+- [x] Document alert signals, retention proposals, secret rotation, and production ownership in the operations runbook.
 
 ## 12. End to end QA and launch
 

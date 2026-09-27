@@ -2,7 +2,7 @@ begin;
 
 set local role service_role;
 
-\echo 1..7
+\echo 1..9
 
 insert into public.commerce_orders (
   id,
@@ -105,11 +105,31 @@ select case when (
 ) then 'ok 6 - recovery returns stalled work to the queue'
 else 'not ok 6 - recovery returns stalled work to the queue' end;
 
+select case when (
+  select count(*) = 1
+  from public.commerce_claim_initial_delivery_for_grant(
+    'f8e7b88e-0d2e-4968-bf93-891b3cb2e93f',
+    900
+  )
+) then 'ok 7 - the immediate path claims only its matching grant delivery job'
+else 'not ok 7 - the immediate path claims only its matching grant delivery job' end;
+
+select case when (
+  select status = 'processing' and attempts = 2
+  from public.commerce_fulfillment_outbox
+  where id = 'fe6cdf20-c307-4caf-b7b2-0fe8a119e6dc'
+) then 'ok 8 - immediate delivery uses the same durable lease and attempt accounting'
+else 'not ok 8 - immediate delivery uses the same durable lease and attempt accounting' end;
+
 select case when not has_function_privilege(
   'anon',
   'public.commerce_claim_fulfillment_jobs(integer, integer)',
   'execute'
-) then 'ok 7 - browser roles cannot claim fulfillment work'
-else 'not ok 7 - browser roles cannot claim fulfillment work' end;
+) and not has_function_privilege(
+  'anon',
+  'public.commerce_claim_initial_delivery_for_grant(uuid, integer)',
+  'execute'
+) then 'ok 9 - browser roles cannot claim general or immediate fulfillment work'
+else 'not ok 9 - browser roles cannot claim general or immediate fulfillment work' end;
 
 rollback;

@@ -1,0 +1,29 @@
+name: Drain fulfillment outbox
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fulfillment-worker
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Drain queued delivery work
+        env:
+          FULFILLMENT_WORKER_SECRET: ${{ secrets.FULFILLMENT_WORKER_SECRET }}
+          FULFILLMENT_WORKER_URL: ${{ vars.FULFILLMENT_WORKER_URL }}
+        run: |
+          test -n "$FULFILLMENT_WORKER_SECRET"
+          test -n "$FULFILLMENT_WORKER_URL"
+          curl --fail --silent --show-error --retry 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 50 \
+            -X POST "$FULFILLMENT_WORKER_URL/api/internal/fulfillment/drain" \
+            -H "Authorization: Bearer $FULFILLMENT_WORKER_SECRET"

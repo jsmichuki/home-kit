@@ -1,13 +1,17 @@
-import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { after, NextResponse } from "next/server";
+
+import { createAccessToken } from "@/lib/access-token";
+import { hashAccessToken } from "@/lib/access";
+import { logOperationalEvent } from "@/lib/observability/safe-log";
+import { deliverInitialFulfillmentEmail } from "@/lib/fulfillment-outbox";
 
 import {
   fulfillVerifiedPaystackCharge,
   type PaystackFulfillmentOutcome,
 } from "@/lib/paystack/fulfillment";
 import {
-  createAccessToken,
   createWebhookPayloadHash,
-  hashAccessToken,
   hasValidPaystackWebhookSignature,
   parsePaystackWebhookEvent,
   PAYSTACK_SIGNATURE_HEADER,
@@ -18,6 +22,9 @@ import {
 } from "@/lib/paystack/transactions";
 
 export const runtime = "nodejs";
+// A Resend call may need its configured 15 second timeout after the Paystack
+// acknowledgement has been sent. The durable outbox remains the fallback.
+export const maxDuration = 60;
 
 const ACCESS_GRANT_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
@@ -67,8 +74,10 @@ export async function POST(request: Request) {
       return acknowledgement("rejected");
     }
 
-    const accessToken = createAccessToken();
+    const accessGrantId = randomUUID();
+    const accessToken = createAccessToken(accessGrantId);
     const outcome = await fulfillVerifiedPaystackCharge({
+      accessGrantId,
       accessTokenExpiresAt: new Date(Date.now() + ACCESS_GRANT_DURATION_MS),
       accessTokenHash: hashAccessToken(accessToken),
       payloadHash: createWebhookPayloadHash(rawBody),
@@ -93,6 +102,21 @@ export async function POST(request: Request) {
       recordWebhookIssue(`fulfillment_${outcome.outcome}`);
     }
 
+    const immediateDeliveryGrantId = outcome.access_grant_id;
+    if (outcome.outcome === "fulfilled" && immediateDeliveryGrantId) {
+      after(async () => {
+        try {
+          const delivery = await deliverInitialFulfillmentEmail({
+            accessGrantId: immediateDeliveryGrantId,
+          });
+          logOperationalEvent("info", "paystack.webhook.delivery_attempted", delivery);
+        } catch {
+          // The row stays in the durable outbox for the GitHub recovery worker.
+          logOperationalEvent("error", "paystack.webhook.delivery_deferred", {});
+        }
+      });
+    }
+
     return acknowledgement(outcome.outcome);
   } catch (error) {
     if (error instanceof PaystackVerificationError) {
@@ -115,5 +139,5 @@ function acknowledgement(outcome: PaystackFulfillmentOutcome | "ignored") {
 
 /** Keep observability useful without logging secrets, body content, or buyer data. */
 function recordWebhookIssue(reason: string) {
-  console.warn("[paystack-webhook]", { reason });
+  logOperationalEvent("warn", "paystack.webhook.rejected", { reason });
 }

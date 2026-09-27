@@ -27,3 +27,7 @@ Never edit a migration that has already been applied to production. Make a new f
 ## Secrets
 
 Keep `SUPABASE_URL` and `SUPABASE_SECRET_KEY` only in local `.env.local` files and the production deployment secret store. Never add an actual secret to source control, browser code, logs, tests, or issue trackers.
+
+## Production safeguards
+
+Before enabling live payments, enable SSL enforcement, review network restrictions, protect every Supabase owner account with MFA, and keep at least two organization owners. Confirm the backup and recovery options that apply to the selected Supabase plan before a material migration. See the broader [operations runbook](./operations-runbook.md) for alerting, retention, secret rotation, and incident procedures.

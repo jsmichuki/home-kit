@@ -14,7 +14,8 @@ export type PaymentConfirmationResponse = {
   status: PaymentConfirmationStatus;
   guideCount?: number;
   maskedEmail?: string;
-  // Section 10 will populate this only after an access grant is validated.
+  // Present only when a separate active access grant is validated on the
+  // server. A payment reference alone never creates this path.
   downloadPath?: string | null;
 };
 

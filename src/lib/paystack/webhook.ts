@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 export const PAYSTACK_SIGNATURE_HEADER = "x-paystack-signature";
 
@@ -74,14 +74,6 @@ export function parsePaystackWebhookEvent(rawBody: Buffer): PaystackWebhookEvent
 
 export function createWebhookPayloadHash(rawBody: Buffer) {
   return createHash("sha256").update(rawBody).digest("hex");
-}
-
-export function createAccessToken() {
-  return randomBytes(32).toString("base64url");
-}
-
-export function hashAccessToken(accessToken: string) {
-  return createHash("sha256").update(accessToken).digest("hex");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

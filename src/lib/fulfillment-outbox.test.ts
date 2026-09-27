@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  deliverInitialFulfillmentEmail,
   drainFulfillmentOutbox,
   OUTBOX_MAX_ATTEMPTS,
   OUTBOX_WORKER_LEASE_SECONDS,
@@ -17,6 +18,17 @@ const job = {
   payload: {
     access_grant_id: "85033b69-9dcc-4dac-b5b2-56220d0d079a",
     order_public_id: "ord_test123",
+  },
+};
+
+const resendJob = {
+  ...job,
+  id: "4d79d20e-514f-476e-a91a-6e0ec581957f",
+  job_type: "send_delivery_email_resend" as const,
+  payload: {
+    ...job.payload,
+    delivery_request_id: "9a9877eb-8b0c-421d-8eb9-9c0a1ac4c436",
+    message_type: "delivery_link_resend" as const,
   },
 };
 
@@ -62,7 +74,7 @@ describe("drainFulfillmentOutbox", () => {
     ).resolves.toEqual({ claimed: 1, completed: 0, failed: 1 });
 
     expect(rpc).toHaveBeenNthCalledWith(2, "commerce_retry_fulfillment_job", {
-      p_error: "Resend unavailable",
+      p_error: "fulfillment_worker_unknown",
       p_job_id: job.id,
       p_max_attempts: OUTBOX_MAX_ATTEMPTS,
     });
@@ -79,5 +91,45 @@ describe("drainFulfillmentOutbox", () => {
     ).rejects.toThrow("The fulfillment queue returned an invalid job.");
 
     expect(sendDeliveryEmail).not.toHaveBeenCalled();
+  });
+
+  it("accepts a durable self service resend job", async () => {
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({ data: [resendJob], error: null })
+      .mockResolvedValueOnce({ data: true, error: null });
+    const sendDeliveryEmail = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      drainFulfillmentOutbox({ client: { rpc }, sendDeliveryEmail }),
+    ).resolves.toEqual({ claimed: 1, completed: 1, failed: 0 });
+
+    expect(sendDeliveryEmail).toHaveBeenCalledWith(resendJob);
+  });
+
+  it("claims and sends only the newly fulfilled grant's initial delivery", async () => {
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({ data: [job], error: null })
+      .mockResolvedValueOnce({ data: true, error: null });
+    const sendDeliveryEmail = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      deliverInitialFulfillmentEmail({
+        accessGrantId: job.payload.access_grant_id,
+        client: { rpc },
+        sendDeliveryEmail,
+      }),
+    ).resolves.toEqual({ claimed: 1, completed: 1, failed: 0 });
+
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "commerce_claim_initial_delivery_for_grant",
+      {
+        p_access_grant_id: job.payload.access_grant_id,
+        p_lease_seconds: OUTBOX_WORKER_LEASE_SECONDS,
+      },
+    );
+    expect(sendDeliveryEmail).toHaveBeenCalledWith(job);
   });
 });
