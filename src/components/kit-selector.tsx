@@ -1,17 +1,18 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ALL_PRODUCT_IDS,
   COMPLETE_SET,
   formatPrice,
+  type Bundle,
   type Guide,
 } from "@/lib/catalog";
 
 const DRAFT_STORAGE_KEY = "home-kit-selection";
 
 type KitSelectorProps = {
+  completeSet?: Bundle;
   guides: readonly Guide[];
 };
 
@@ -39,17 +40,22 @@ function readStoredDraft(): StoredDraft | null {
   }
 }
 
-export function KitSelector({ guides }: KitSelectorProps) {
+export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorProps) {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
-  const [isSavingSelection, setIsSavingSelection] = useState(false);
+  const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
   const [formError, setFormError] = useState("");
   const errorSummaryRef = useRef<HTMLDivElement>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
-  const completeSetSelected = selectedProductIds.includes(COMPLETE_SET.id);
+  const allowedProductIds = useMemo(
+    () => new Set([...guides.map((guide) => guide.id), completeSet.id]),
+    [completeSet.id, guides],
+  );
+  const completeSetSelected = selectedProductIds.includes(completeSet.id);
   const selectedGuides = guides.filter((guide) =>
     selectedProductIds.includes(guide.id),
   );
@@ -61,16 +67,16 @@ export function KitSelector({ guides }: KitSelectorProps) {
     (sum, guide) => sum + guide.priceInCents,
     0,
   );
-  const bundleDiscount = completeSetIndividualPrice - COMPLETE_SET.priceInCents;
-  const total = completeSetSelected ? COMPLETE_SET.priceInCents : individualTotal;
+  const bundleDiscount = completeSetIndividualPrice - completeSet.priceInCents;
+  const total = completeSetSelected ? completeSet.priceInCents : individualTotal;
   const guideCount = completeSetSelected ? guides.length : selectedGuides.length;
   const emailError = emailTouched && !isValidEmail(email)
     ? "Enter a valid email address."
     : "";
-  const canContinue = guideCount > 0 && isValidEmail(email) && !isSavingSelection;
+  const canContinue = guideCount > 0 && isValidEmail(email) && !isCreatingCheckout;
 
   const selectionSummary = completeSetSelected
-    ? `${COMPLETE_SET.title} selected. All ${guides.length} guides are included.`
+    ? `${completeSet.title} selected. All ${guides.length} guides are included.`
     : selectedGuides.length === 0
       ? "No guides selected."
       : `${selectedGuides.length} guide${selectedGuides.length === 1 ? "" : "s"} selected.`;
@@ -81,11 +87,11 @@ export function KitSelector({ guides }: KitSelectorProps) {
 
       if (draft) {
         const restoredProductIds = (draft.productIds ?? []).filter((id) =>
-          ALL_PRODUCT_IDS.has(id),
+          allowedProductIds.has(id),
         );
 
-        if (restoredProductIds.includes(COMPLETE_SET.id)) {
-          setSelectedProductIds([COMPLETE_SET.id]);
+        if (restoredProductIds.includes(completeSet.id)) {
+          setSelectedProductIds([completeSet.id]);
         } else {
           setSelectedProductIds(restoredProductIds);
         }
@@ -97,7 +103,7 @@ export function KitSelector({ guides }: KitSelectorProps) {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [allowedProductIds, completeSet.id]);
 
   useEffect(() => {
     if (!hasRestoredDraft) {
@@ -111,6 +117,9 @@ export function KitSelector({ guides }: KitSelectorProps) {
   }, [email, hasRestoredDraft, selectedProductIds]);
 
   function toggleGuide(guideId: string) {
+    if (isCreatingCheckout) {
+      return;
+    }
     setStatusMessage("");
     setFormError("");
 
@@ -130,11 +139,14 @@ export function KitSelector({ guides }: KitSelectorProps) {
   }
 
   function toggleCompleteSet() {
+    if (isCreatingCheckout) {
+      return;
+    }
     setFormError("");
     setSelectedProductIds((currentIds) => {
-      const nextSelection = currentIds.includes(COMPLETE_SET.id)
+      const nextSelection = currentIds.includes(completeSet.id)
         ? []
-        : [COMPLETE_SET.id];
+        : [completeSet.id];
 
       setStatusMessage(
         nextSelection.length > 0
@@ -146,7 +158,7 @@ export function KitSelector({ guides }: KitSelectorProps) {
     });
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (guideCount === 0) {
@@ -164,14 +176,42 @@ export function KitSelector({ guides }: KitSelectorProps) {
 
     setFormError("");
     setStatusMessage("");
-    setIsSavingSelection(true);
+    setIsCreatingCheckout(true);
 
-    window.setTimeout(() => {
-      setIsSavingSelection(false);
-      setStatusMessage(
-        "Your selection is saved. Card payment will be connected in the next implementation step.",
-      );
-    }, 250);
+    const idempotencyKey = idempotencyKeyRef.current ?? createIdempotencyKey();
+    idempotencyKeyRef.current = idempotencyKey;
+
+    try {
+      const response = await fetch("/api/checkout", {
+        body: JSON.stringify({ email, productIds: selectedProductIds }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        method: "POST",
+      });
+      const result = (await response.json().catch(() => null)) as CheckoutResponse | null;
+
+      if (!response.ok || !result || !("authorizationUrl" in result)) {
+        idempotencyKeyRef.current = null;
+        setFormError(
+          result && "error" in result
+            ? result.error.message
+            : "We could not start your payment. Please try again.",
+        );
+        window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
+        return;
+      }
+
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+      window.location.assign(result.authorizationUrl);
+    } catch {
+      idempotencyKeyRef.current = null;
+      setFormError("We could not start your payment. Check your connection and try again.");
+      window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
+    } finally {
+      setIsCreatingCheckout(false);
+    }
   }
 
   return (
@@ -186,7 +226,7 @@ export function KitSelector({ guides }: KitSelectorProps) {
           </p>
         </div>
 
-        <form className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]" onSubmit={handleSubmit}>
+        <form aria-busy={isCreatingCheckout} className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]" onSubmit={handleSubmit}>
           {formError ? (
             <div
               aria-labelledby="selection-error-heading"
@@ -212,6 +252,7 @@ export function KitSelector({ guides }: KitSelectorProps) {
                   <input
                     checked={checked}
                     className="mt-1 size-5 accent-stone-950"
+                    disabled={isCreatingCheckout}
                     name="guides"
                     onChange={() => toggleGuide(guide.id)}
                     type="checkbox"
@@ -245,23 +286,24 @@ export function KitSelector({ guides }: KitSelectorProps) {
               <input
                 checked={completeSetSelected}
                 className="mt-1 size-5 accent-stone-950"
+                disabled={isCreatingCheckout}
                 name="complete-set"
                 onChange={toggleCompleteSet}
                 type="checkbox"
               />
               <span className="min-w-0 flex-1">
                 <span className="block text-base font-semibold text-stone-950">
-                  {COMPLETE_SET.title}
+                  {completeSet.title}
                 </span>
                 <span className="mt-1 block text-sm text-stone-700">
-                  {COMPLETE_SET.description}
+                  {completeSet.description}
                 </span>
                 <span className="mt-2 block text-sm font-medium text-stone-950">
                   Save {formatPrice(bundleDiscount)} compared with individual guides.
                 </span>
               </span>
               <span className="shrink-0 text-base font-semibold text-stone-950">
-                {formatPrice(COMPLETE_SET.priceInCents)}
+                {formatPrice(completeSet.priceInCents)}
               </span>
             </label>
           </fieldset>
@@ -325,6 +367,7 @@ export function KitSelector({ guides }: KitSelectorProps) {
               className="mt-3 min-h-11 w-full rounded-md border border-stone-400 bg-white px-3 py-2 text-base text-stone-950 outline-none transition-colors duration-200 placeholder:text-stone-500 focus:border-stone-950 focus:ring-2 focus:ring-stone-950 focus:ring-offset-2"
               id="customer-email"
               name="email"
+              disabled={isCreatingCheckout}
               onBlur={() => setEmailTouched(true)}
               onChange={(event) => {
                 setEmail(event.target.value);
@@ -348,7 +391,7 @@ export function KitSelector({ guides }: KitSelectorProps) {
               disabled={!canContinue}
               type="submit"
             >
-              {isSavingSelection ? "Saving selection" : "Continue to payment"}
+              {isCreatingCheckout ? "Starting secure payment" : "Pay securely"}
             </button>
             {!canContinue ? (
               <p className="mt-2 text-sm text-stone-700">
@@ -357,6 +400,9 @@ export function KitSelector({ guides }: KitSelectorProps) {
                   : "Enter a valid email address to continue."}
               </p>
             ) : null}
+            <p className="mt-3 text-sm text-stone-700">
+              Card payment is handled securely by Paystack. No account is required.
+            </p>
             {statusMessage ? (
               <p aria-live="polite" className="mt-3 text-sm text-stone-800">
                 {statusMessage}
@@ -367,4 +413,18 @@ export function KitSelector({ guides }: KitSelectorProps) {
       </div>
     </section>
   );
+}
+
+type CheckoutResponse =
+  | { authorizationUrl: string }
+  | { error: { code: string; message: string } };
+
+function createIdempotencyKey() {
+  if (typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

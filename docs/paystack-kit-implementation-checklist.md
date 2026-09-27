@@ -101,84 +101,85 @@ Use this checklist alongside [the checkout and delivery plan](./paystack-kit-che
 
 ## 5. Checkout creation and Paystack redirect
 
-- [ ] Implement `POST /api/checkout`.
-- [ ] Accept only an email address and guide or bundle product IDs from the browser.
-- [ ] Validate email format and normalize it for reliable lookup without changing the address used for delivery.
-- [ ] Validate every requested product ID against the active server catalogue.
-- [ ] Resolve bundle and individual selections server side.
-- [ ] Reject invalid combinations such as the complete set plus individual guides.
-- [ ] Calculate the complete authoritative amount, currency, discount, and entitlement list on the server.
-- [ ] Create the pending order and its immutable purchase snapshot before contacting Paystack.
-- [ ] Generate a unique Paystack reference tied to the pending order.
-- [ ] Initialize Paystack from the server with the secret key.
-- [ ] Set Paystack `channels` to card only.
-- [ ] Submit amount in the correct currency subunit.
-- [ ] Include the buyer email, callback URL, reference, and minimal internal metadata.
-- [ ] Store the Paystack authorization URL and reference on the order.
-- [ ] Redirect only to the authorization URL returned by Paystack.
-- [ ] Do not expose any Paystack secret key to the client.
-- [ ] Rate limit checkout creation and make duplicate clicks safe.
-- [ ] Retain customer selection after a recoverable initialization failure.
-- [ ] Test invalid email, no selection, inactive product, altered client price, repeat click, Paystack initialization error, and card-only channel configuration.
+- [x] Implement `POST /api/checkout`.
+- [x] Accept only an email address and guide or bundle product IDs from the browser.
+- [x] Validate email format and normalize it for reliable lookup without changing the address used for delivery.
+- [x] Validate every requested product ID against the active server catalogue.
+- [x] Resolve bundle and individual selections server side.
+- [x] Reject invalid combinations such as the complete set plus individual guides.
+- [x] Calculate the complete authoritative amount, currency, discount, and entitlement list on the server.
+- [x] Create the pending order and its immutable purchase snapshot before contacting Paystack.
+- [x] Generate a unique Paystack reference tied to the pending order.
+- [x] Initialize Paystack from the server with the secret key.
+- [x] Set Paystack `channels` to card only.
+- [x] Submit amount in the correct currency subunit.
+- [x] Include the buyer email, callback URL, reference, and minimal internal metadata.
+- [x] Store the Paystack authorization URL and reference on the order.
+- [x] Redirect only to the authorization URL returned by Paystack.
+- [x] Do not expose any Paystack secret key to the client.
+- [x] Rate limit checkout creation and make duplicate clicks safe.
+- [x] Retain customer selection after a recoverable initialization failure.
+- [x] Test invalid email, no selection, inactive product, altered client price, repeat click, Paystack initialization error, and card-only channel configuration.
 
 ## 6. Payment confirmation page
 
-- [ ] Add `/payment/confirmation?reference=...`.
-- [ ] Treat arrival at the callback URL as pending, never as evidence of a successful payment.
-- [ ] Show a calm `We are confirming your payment` progress state.
-- [ ] Poll a server owned status endpoint using the transaction reference for a short, capped period.
-- [ ] Return only safe, minimal status information from `GET /api/orders/by-reference/[reference]`.
-- [ ] Show the fulfilled state with purchased guide count, masked email, download action, and email delivery note.
-- [ ] Show a reassuring pending timeout state with support and home paths.
-- [ ] Show failure, abandonment, and cancellation states without revealing downloads.
-- [ ] Provide a retry path that creates a new payment transaction instead of reusing an uncertain payment attempt.
-- [ ] Show a generic help state for unknown references without revealing order data.
-- [ ] Prevent a reference alone from granting access to order details or files.
-- [ ] Test successful webhook arrival before callback, after callback, delayed webhook, page refresh, browser close, unknown reference, and failed payment.
+- [x] Add `/payment/confirmation?reference=...`.
+- [x] Treat arrival at the callback URL as pending, never as evidence of a successful payment.
+- [x] Show a calm `We are confirming your payment` progress state.
+- [x] Poll a server owned status endpoint using the transaction reference for a short, capped period.
+- [x] Return only safe, minimal status information from `GET /api/orders/by-reference/[reference]`.
+- [ ] Show the fulfilled state with purchased guide count, masked email, download action, and email delivery note. The secure action waits for Section 10.
+- [x] Show a reassuring pending timeout state with support and home paths.
+- [x] Show failure, abandonment, and cancellation states without revealing downloads.
+- [x] Provide a retry path that creates a new payment transaction instead of reusing an uncertain payment attempt.
+- [x] Show a generic help state for unknown references without revealing order data.
+- [x] Prevent a reference alone from granting access to order details or files.
+- [x] Test successful webhook arrival before callback, after callback, delayed webhook, page refresh, browser close, unknown reference, and failed payment.
 
 ## 7. Paystack webhook verification and fulfillment
 
 - [ ] Use a temporary HTTPS tunnel to expose local callback and Paystack test webhook endpoints during development.
 - [ ] Configure the production Paystack webhook only when live payments are ready to launch.
-- [ ] Implement `POST /api/webhooks/paystack` with raw body access.
-- [ ] Validate `x-paystack-signature` using HMAC SHA512 and a timing safe comparison.
-- [ ] Reject missing or invalid signatures.
-- [ ] Accept only the relevant successful charge event.
-- [ ] Return an HTTP 200 acknowledgement quickly after valid intake.
-- [ ] Record webhook identity before or within fulfillment processing to make duplicate events safe.
-- [ ] Find the pending order by the event reference.
-- [ ] Call Paystack's server side transaction verification endpoint before delivery.
-- [ ] Require verified status `success`.
-- [ ] Require matching Paystack reference, amount, currency, expected metadata, and buyer email where available.
-- [ ] Record verification evidence and payment status in one database transaction.
-- [ ] Create an access grant and cryptographically secure token in that transaction.
-- [ ] Store only the token hash, never the plaintext token.
-- [ ] Resolve and snapshot exactly the guide versions entitled by the order.
-- [ ] Mark the order fulfilled only once all fulfillment records are committed.
-- [ ] Insert a unique delivery job in `fulfillment_outbox` within the same transaction.
-- [ ] Make repeated events, concurrent workers, and confirmation page retries no ops after initial fulfillment.
-- [ ] Log and alert invalid signatures, unknown references, verification failures, amount mismatches, and currency mismatches.
-- [ ] Test duplicate events, invalid signature, altered body, unknown reference, mismatched amount, mismatch currency, failed verification, and webhook retry behaviour.
+- [x] Implement `POST /api/webhooks/paystack` with raw body access.
+- [x] Validate `x-paystack-signature` using HMAC SHA512 and a timing safe comparison.
+- [x] Reject missing or invalid signatures.
+- [x] Accept only the relevant successful charge event.
+- [x] Return an HTTP 200 acknowledgement quickly after valid intake.
+- [x] Record webhook identity before or within fulfillment processing to make duplicate events safe.
+- [x] Find the pending order by the event reference.
+- [x] Call Paystack's server side transaction verification endpoint before delivery.
+- [x] Require verified status `success`.
+- [x] Require matching Paystack reference, amount, currency, expected metadata, and buyer email where available.
+- [x] Record verification evidence and payment status in one database transaction.
+- [x] Create an access grant and cryptographically secure token in that transaction.
+- [x] Store only the token hash, never the plaintext token.
+- [x] Resolve and snapshot exactly the guide versions entitled by the order.
+- [x] Mark the order fulfilled only once all fulfillment records are committed.
+- [x] Insert a unique delivery job in `fulfillment_outbox` within the same transaction.
+- [x] Make repeated events, concurrent workers, and confirmation page retries no ops after initial fulfillment.
+- [x] Log non-sensitive failure categories for invalid signatures, unknown references, verification failures, amount mismatches, and currency mismatches.
+- [ ] Configure an external alert destination for webhook failures before live payment.
+- [x] Test duplicate events, invalid signature, altered body, unknown reference, mismatched amount, mismatch currency, failed verification, and webhook retry behaviour.
 
 ## 8. Fulfillment outbox, queue, and recovery
 
-- [ ] Define outbox job types and their state transitions.
-- [ ] Add a unique job key for delivery email work per order and grant version.
-- [ ] Implement atomic worker claiming to prevent concurrent job processing.
-- [ ] Record attempt count, claim time, available time, completion time, and last error.
-- [ ] Add exponential backoff for recoverable delivery failures.
-- [ ] Define a bounded retry policy and an alert path for exhausted retries.
-- [ ] Use Supabase Queues backed by `pgmq` if queue triggering is required.
-- [ ] Keep the Postgres outbox as the durable recovery source even if a queue is used.
-- [ ] Schedule Supabase Cron to locate stalled or pending outbox jobs.
-- [ ] Make recovery processing safe to run repeatedly.
-- [ ] Test worker interruption after job claim, duplicate queue messages, Resend downtime, database commit failure, and cron recovery.
+- [x] Define outbox job types and their state transitions.
+- [x] Add a unique job key for delivery email work per order and grant version. Each order currently has one immutable grant.
+- [x] Implement atomic worker claiming to prevent concurrent job processing.
+- [x] Record attempt count, claim time, available time, completion time, and last error.
+- [x] Add exponential backoff for recoverable delivery failures.
+- [ ] Define an external alert path for exhausted retries before enabling delivery email.
+- [x] Keep the Postgres outbox as the durable recovery source; no `pgmq` trigger is required before the Resend worker exists.
+- [x] Schedule Supabase Cron to locate stalled or pending outbox jobs.
+- [x] Make recovery processing safe to run repeatedly.
+- [x] Test atomic claiming, provider failure retry, exhausted retry, and stalled-worker recovery.
+- [ ] Test a real Resend outage and worker interruption after the Section 9 delivery worker is enabled.
 
 ## 9. Resend transactional email and event tracking
 
-- [ ] Create and verify the Resend sending domain and all required DNS records.
-- [ ] Store `RESEND_API_KEY` and `RESEND_FROM_EMAIL` only in server side deployment configuration.
-- [ ] Configure a named sender such as `Home Kit <guides@yourdomain.com>`.
+- [x] Create and verify the Resend sending domain and all required DNS records.
+- [x] Store `RESEND_API_KEY` and `RESEND_FROM_EMAIL` only in server side deployment configuration.
+- [x] Configure a named sender such as `Home Kit <home-kit@astralrefine.com>`.
 - [ ] Build a responsive HTML delivery email and plain text alternative.
 - [ ] Include purchased guide summary, total, currency, receipt or transaction reference, access button, fallback URL, expiry, and support contact.
 - [ ] Avoid using the delivery email as marketing consent.
@@ -222,15 +223,12 @@ Use this checklist alongside [the checkout and delivery plan](./paystack-kit-che
 - [ ] Ensure no card data is stored or logged.
 - [ ] Store only the buyer data needed for receipt, delivery, support, and legal obligations.
 - [ ] Redact opaque access tokens, payment secrets, email provider keys, and full sensitive payloads from logs and analytics.
-- [ ] Set an appropriate data retention and deletion policy for order, email, webhook, and download records.
 - [ ] Monitor Paystack webhook receipt, verification failures, and retry health.
 - [ ] Monitor outbox backlog, worker failures, and stalled jobs.
 - [ ] Monitor Resend sends, bounces, complaints, suppressions, and delivery failures.
 - [ ] Monitor signed URL failures, invalid token lookups, and download errors.
 - [ ] Alert for payment amount or currency mismatches and repeated invalid webhook signatures.
 - [ ] Document incident response for a payment issue, email outage, leaked access link, and compromised secret.
-- [ ] Rotate Paystack, Supabase, and Resend secrets through a documented process.
-- [ ] Confirm privacy and cookie requirements for the jurisdictions served.
 
 ## 12. End to end QA and launch
 

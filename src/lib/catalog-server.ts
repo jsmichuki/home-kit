@@ -1,6 +1,6 @@
 import "server-only";
 
-import { GUIDES, type Guide } from "@/lib/catalog";
+import { COMPLETE_SET, GUIDES, type Bundle, type Guide } from "@/lib/catalog";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type DatabaseGuide = {
@@ -23,6 +23,25 @@ type DatabaseGuidePrice = {
   active_from: string;
   amount_in_subunits: number;
   guide_id: string;
+};
+
+type DatabaseBundle = {
+  id: string;
+  is_active: boolean;
+  short_description: string;
+  slug: string;
+  title: string;
+};
+
+type DatabaseBundleGuide = {
+  bundle_id: string;
+  guide_id: string;
+};
+
+type DatabaseBundlePrice = {
+  active_from: string;
+  amount_in_subunits: number;
+  bundle_id: string;
 };
 
 function hasSupabaseServerCredentials() {
@@ -117,6 +136,65 @@ export async function getActiveGuideCatalogue(): Promise<readonly Guide[]> {
       includedFiles,
     };
   });
+}
+
+/**
+ * The bundle is also read from the server catalogue so its displayed total
+ * cannot drift from the amount used by checkout after an editorial price
+ * change. The static value is only for unconfigured local builds.
+ */
+export async function getActiveCompleteSet(): Promise<Bundle> {
+  assertSupabaseConfigurationIsComplete();
+
+  if (!hasSupabaseServerCredentials()) {
+    return COMPLETE_SET;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const requestedAt = new Date().toISOString();
+  const [bundleResult, bundleGuidesResult, pricesResult] = await Promise.all([
+    supabase
+      .from("commerce_bundles")
+      .select("id, slug, title, short_description, is_active")
+      .eq("id", COMPLETE_SET.id)
+      .eq("is_active", true)
+      .maybeSingle(),
+    supabase
+      .from("commerce_bundle_guides")
+      .select("bundle_id, guide_id")
+      .eq("bundle_id", COMPLETE_SET.id),
+    supabase
+      .from("commerce_catalogue_prices")
+      .select("bundle_id, amount_in_subunits, active_from")
+      .eq("bundle_id", COMPLETE_SET.id)
+      .eq("currency", "USD")
+      .lte("active_from", requestedAt)
+      .or(`active_until.is.null,active_until.gt.${requestedAt}`),
+  ]);
+
+  if (bundleResult.error || bundleGuidesResult.error || pricesResult.error || !bundleResult.data) {
+    throw new Error("We could not load the complete set.");
+  }
+
+  const price = ((pricesResult.data ?? []) as DatabaseBundlePrice[])
+    .sort((left, right) => right.active_from.localeCompare(left.active_from))
+    .find((item) => item.bundle_id === COMPLETE_SET.id);
+
+  if (!price) {
+    throw new Error("The complete set does not have a price.");
+  }
+
+  const bundle = bundleResult.data as DatabaseBundle;
+  return {
+    description: bundle.short_description,
+    id: bundle.id,
+    includedGuideIds: ((bundleGuidesResult.data ?? []) as DatabaseBundleGuide[])
+      .filter((item) => item.bundle_id === bundle.id)
+      .map((item) => item.guide_id),
+    priceInCents: price.amount_in_subunits,
+    slug: bundle.slug,
+    title: bundle.title,
+  };
 }
 
 export { hasSupabaseServerCredentials };

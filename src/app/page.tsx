@@ -1,6 +1,10 @@
 import { KitSelector } from "@/components/kit-selector";
 import { PurchaseExplainer } from "@/components/purchase-explainer";
-import { getActiveGuideCatalogue, hasSupabaseServerCredentials } from "@/lib/catalog-server";
+import {
+  getActiveCompleteSet,
+  getActiveGuideCatalogue,
+  hasSupabaseServerCredentials,
+} from "@/lib/catalog-server";
 import { connection } from "next/server";
 
 export default async function Home() {
@@ -8,7 +12,10 @@ export default async function Home() {
     await connection();
   }
 
-  const guides = await getActiveGuideCatalogue();
+  const [guides, completeSet] = await Promise.all([
+    getActiveGuideCatalogue(),
+    getActiveCompleteSet(),
+  ]);
 
   return (
     <main id="main-content" className="flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
@@ -30,7 +37,7 @@ export default async function Home() {
         </p>
       </section>
 
-      <KitSelector guides={guides} />
+      <KitSelector completeSet={completeSet} guides={guides} />
       <PurchaseExplainer />
     </main>
   );

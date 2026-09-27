@@ -14,6 +14,7 @@ describe("KitSelector", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("requires a guide and valid email before continuing", async () => {
@@ -22,7 +23,7 @@ describe("KitSelector", () => {
     render(<KitSelector guides={GUIDES} />);
 
     const continueButton = screen.getByRole("button", {
-      name: /continue to payment/i,
+      name: /pay securely/i,
     });
     expect(continueButton).toBeDisabled();
 
@@ -75,6 +76,23 @@ describe("KitSelector", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the server-supplied complete-set price in its payment summary", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <KitSelector
+        completeSet={{ ...COMPLETE_SET, priceInCents: 6500 }}
+        guides={GUIDES}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("checkbox", { name: new RegExp(COMPLETE_SET.title, "i") }),
+    );
+
+    expect(screen.getAllByText("$65")).toHaveLength(2);
+  });
+
   it("shows an accessible error for an invalid email address", async () => {
     const user = userEvent.setup();
 
@@ -106,25 +124,87 @@ describe("KitSelector", () => {
 
     expect(screen.getByLabelText(/email address/i)).toHaveValue("buyer@example.com");
     expect(
-      screen.getByRole("button", { name: /continue to payment/i }),
+      screen.getByRole("button", { name: /pay securely/i }),
     ).toBeEnabled();
   });
 
-  it("shows saving and saved feedback without submitting a payment", async () => {
+  it("submits only email and product IDs and retains the draft after an initialization failure", async () => {
     const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "PAYMENT_UNAVAILABLE",
+            message: "We could not start your payment. Please try again.",
+          },
+        }),
+        { status: 502 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
     render(<KitSelector guides={GUIDES} />);
 
     await user.click(screen.getByRole("checkbox", { name: /first 30 days/i }));
     await user.type(screen.getByLabelText(/email address/i), "buyer@example.com");
-    await user.click(screen.getByRole("button", { name: /continue to payment/i }));
-
-    expect(screen.getByRole("button", { name: /saving selection/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /pay securely/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/your selection is saved\. card payment will be connected/i),
-      ).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/checkout",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "buyer@example.com", productIds: [GUIDES[0].id] }),
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        method: "POST",
+      }),
+    );
+
+    expect(screen.getByText(/we could not start your payment/i)).toBeInTheDocument();
+    expect(window.localStorage.getItem(draftStorageKey)).toContain("buyer@example.com");
+
+    await user.click(screen.getByRole("button", { name: /pay securely/i }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const firstHeaders = (fetchMock.mock.calls[0]?.[1] as RequestInit)
+      .headers as Record<string, string>;
+    const secondHeaders = (fetchMock.mock.calls[1]?.[1] as RequestInit)
+      .headers as Record<string, string>;
+    expect(secondHeaders["Idempotency-Key"]).not.toBe(firstHeaders["Idempotency-Key"]);
+  });
+
+  it("prevents repeated checkout requests while checkout creation is in progress", async () => {
+    const user = userEvent.setup();
+    let resolveRequest: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn(
+      () => new Promise<Response>((resolve) => {
+        resolveRequest = resolve;
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<KitSelector guides={GUIDES} />);
+
+    await user.click(screen.getByRole("checkbox", { name: /first 30 days/i }));
+    await user.type(screen.getByLabelText(/email address/i), "buyer@example.com");
+    await user.click(screen.getByRole("button", { name: /pay securely/i }));
+
+    expect(screen.getByRole("button", { name: /starting secure payment/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /starting secure payment/i }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveRequest?.(
+      new Response(
+        JSON.stringify({
+          error: { code: "PAYMENT_UNAVAILABLE", message: "Try again." },
+        }),
+        { status: 502 },
+      ),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Try again.")).toBeInTheDocument();
     });
   });
 });
