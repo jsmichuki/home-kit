@@ -319,12 +319,6 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
                           {formatPrice(guide.priceInCents)}
                         </span>
                       </label>
-                      <Link
-                        className="inline-flex min-h-11 items-center px-4 py-2 text-sm font-semibold text-stone-950 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-inset"
-                        href={`/guides/${guide.slug}`}
-                      >
-                        Preview guide
-                      </Link>
                     </div>
                   );
                 })}

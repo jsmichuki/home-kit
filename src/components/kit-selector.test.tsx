@@ -36,6 +36,14 @@ describe("KitSelector", () => {
     expect(continueButton).toBeEnabled();
   });
 
+  it("does not show guide preview links in the selector", () => {
+    render(<KitSelector guides={GUIDES} />);
+
+    expect(
+      screen.queryByRole("link", { name: /preview guide/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("supports keyboard selection of the complete set with native checkbox semantics", async () => {
     const user = userEvent.setup();
 
