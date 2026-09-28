@@ -15,7 +15,7 @@ export function PolicyPage({
   children,
 }: PolicyPageProps) {
   return (
-    <main className="flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
+    <main className="site-page flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
       <article className="mx-auto max-w-3xl">
         <Link
           className="inline-flex min-h-11 items-center text-sm font-medium text-stone-700 underline underline-offset-4 hover:text-stone-950 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2"

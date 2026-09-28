@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
-import { DM_Sans, Fraunces } from "next/font/google";
+import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/site";
 
@@ -9,18 +9,13 @@ const dmSans = DM_Sans({
   subsets: ["latin"],
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   ),
-  title: "Complete New Homeowner System | Practical Guides for Your First Year",
+  title: "Complete New Homeowner System | A Clear Plan After Closing",
   description:
-    "Get eight practical homeowner guides and editable companions for setting up, maintaining, protecting, budgeting, and improving your home.",
+    "Your home did not come with an owner’s manual. Get a clear plan for the work that matters after closing, from setup and maintenance to records, repairs, and projects.",
   applicationName: "The Complete New Homeowner System",
   appleWebApp: {
     capable: true,
@@ -37,7 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${dmSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}

@@ -15,8 +15,8 @@ export default function OpenGraphImage() {
       <div
         style={{
           alignItems: "center",
-          background: "#fafaf9",
-          color: "#1c1917",
+          background: "#f4ebdd",
+          color: "#292a29",
           display: "flex",
           flexDirection: "column",
           height: "100%",
@@ -25,11 +25,12 @@ export default function OpenGraphImage() {
           width: "100%",
         }}
       >
-        <div style={{ fontSize: 34, fontWeight: 600 }}>
+        <div style={{ color: "#66705b", fontSize: 34, fontWeight: 600 }}>
           The Complete New Homeowner System
         </div>
         <div
           style={{
+            fontFamily: "serif",
             fontSize: 72,
             fontWeight: 600,
             marginTop: 32,

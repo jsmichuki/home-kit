@@ -219,10 +219,10 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
       <div className="mx-auto max-w-4xl">
         <div className="text-center">
           <h2 id="kit-selector-heading" className="text-3xl font-semibold text-stone-950">
-            Build your homeowner kit
+            Choose the plan that gives you a clear start
           </h2>
           <p className="mt-3 text-base text-stone-700">
-            Select individual guides or choose the complete set.
+            Choose the complete system to keep every homeowner task in one place, or select the guide that fits the question in front of you.
           </p>
         </div>
 

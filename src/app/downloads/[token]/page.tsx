@@ -31,7 +31,7 @@ function formatExpiry(value: string) {
 
 function AccessUnavailable() {
   return (
-    <main id="main-content" className="flex flex-1 items-center bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
+    <main id="main-content" className="site-page flex flex-1 items-center bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
       <div className="mx-auto w-full max-w-xl rounded-lg border border-stone-300 bg-white p-6 sm:p-8">
         <p className="text-sm font-semibold text-stone-700">Download access</p>
         <h1 className="mt-2 text-balance text-3xl font-semibold tracking-tight text-stone-950">
@@ -65,7 +65,7 @@ export default async function DownloadsPage({
   }
 
   return (
-    <main id="main-content" className="flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
+    <main id="main-content" className="site-page flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
       <div className="mx-auto w-full max-w-3xl rounded-lg border border-stone-300 bg-white p-6 sm:p-8">
         <p className="text-sm font-semibold text-stone-700">Your secure guide access</p>
         <h1 className="mt-2 text-balance text-3xl font-semibold tracking-tight text-stone-950">

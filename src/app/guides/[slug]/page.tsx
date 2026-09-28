@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findGuideBySlug, GUIDES } from "@/lib/catalog";
@@ -38,8 +39,20 @@ export default async function GuidePreviewPage({
   }
 
   return (
-    <main className="flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
-      <article className="mx-auto max-w-2xl">
+    <main className="site-page flex-1 bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
+      <article className="mx-auto grid max-w-4xl gap-10 md:grid-cols-[220px_1fr] md:items-start">
+        <aside className="mx-auto w-full max-w-[220px] md:sticky md:top-8">
+          <Image
+            alt={`Booklet cover for ${guide.title}`}
+            className="booklet-cover h-auto w-full"
+            height={612}
+            priority
+            sizes="(max-width: 768px) 220px, 220px"
+            src={`/guide-covers/${guide.slug}.png`}
+            width={396}
+          />
+        </aside>
+        <div>
         <Link
           className="inline-flex min-h-11 items-center text-sm font-semibold text-stone-950 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2"
           href="/#kit-selector-heading"
@@ -73,6 +86,7 @@ export default async function GuidePreviewPage({
         >
           Select this guide
         </Link>
+        </div>
       </article>
     </main>
   );

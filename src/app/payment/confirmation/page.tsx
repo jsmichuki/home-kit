@@ -19,7 +19,7 @@ export default async function PaymentConfirmationPage({
     : "";
 
   return (
-    <main id="main-content" className="flex flex-1 items-center bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
+    <main id="main-content" className="site-page flex flex-1 items-center bg-stone-50 px-4 py-12 text-stone-950 sm:px-6 sm:py-16">
       <div className="mx-auto w-full max-w-xl">
         <PaymentConfirmationPanel confirmation={confirmation} reference={reference} />
       </div>
