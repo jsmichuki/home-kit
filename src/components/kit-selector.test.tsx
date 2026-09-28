@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KitSelector } from "@/components/kit-selector";
@@ -42,6 +42,24 @@ describe("KitSelector", () => {
     expect(
       screen.queryByRole("link", { name: /preview guide/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("collects email in the checkout sheet after mobile continuation", async () => {
+    const user = userEvent.setup();
+
+    render(<KitSelector guides={GUIDES} />);
+
+    await user.click(screen.getByRole("checkbox", { name: /first 30 days/i }));
+    await user.click(screen.getByRole("button", { name: /continue to checkout/i }));
+
+    const sheet = screen.getByRole("dialog", { name: /where should we send your guides/i });
+    await waitFor(() => {
+      expect(within(sheet).getByLabelText(/email address/i)).toHaveFocus();
+    });
+    expect(within(sheet).getByRole("button", { name: /pay securely/i })).toBeDisabled();
+
+    await user.type(within(sheet).getByLabelText(/email address/i), "buyer@example.com");
+    expect(within(sheet).getByRole("button", { name: /pay securely/i })).toBeEnabled();
   });
 
   it("supports keyboard selection of the complete set with native checkbox semantics", async () => {

@@ -1,26 +1,17 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-  COMPLETE_SET,
-  formatPrice,
-  type Bundle,
-  type Guide,
-} from "@/lib/catalog";
+import { COMPLETE_SET, formatPrice, type Bundle, type Guide } from "@/lib/catalog";
 
 const DRAFT_STORAGE_KEY = "home-kit-selection";
 
-type KitSelectorProps = {
-  completeSet?: Bundle;
-  guides: readonly Guide[];
-};
-
-type StoredDraft = {
-  email?: string;
-  productIds?: string[];
-};
+type KitSelectorProps = { completeSet?: Bundle; guides: readonly Guide[] };
+type StoredDraft = { email?: string; productIds?: string[] };
+type CheckoutError = { code: string; message: string; requestId?: string };
+type CheckoutResponse = { authorizationUrl: string } | { error: CheckoutError };
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -28,11 +19,7 @@ function isValidEmail(email: string) {
 
 function readStoredDraft(): StoredDraft | null {
   const rawDraft = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-
-  if (!rawDraft) {
-    return null;
-  }
-
+  if (!rawDraft) return null;
   try {
     return JSON.parse(rawDraft) as StoredDraft;
   } catch {
@@ -42,11 +29,25 @@ function readStoredDraft(): StoredDraft | null {
 }
 
 function formatCheckoutError(error: CheckoutError) {
-  if (!error.requestId) {
-    return error.message;
-  }
+  return error.requestId
+    ? `${error.message} If it keeps happening, contact support and include reference ${error.requestId}.`
+    : error.message;
+}
 
-  return `${error.message} If it keeps happening, contact support and include reference ${error.requestId}.`;
+function GuideArtwork({ guide, size = "card" }: { guide: Guide; size?: "card" | "list" }) {
+  return <span aria-hidden="true" className={`guide-artwork guide-artwork-${size}`}><Image alt="" height={80} src={`/guide-covers/${guide.slug}.png`} width={52} /></span>;
+}
+
+function CheckIcon() {
+  return <svg aria-hidden="true" fill="none" viewBox="0 0 16 16"><path d="m3.25 8.25 3 3 6.5-6.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" /></svg>;
+}
+
+function ArrowIcon() {
+  return <svg aria-hidden="true" fill="none" viewBox="0 0 20 20"><path d="M3 10h13M11 4.5l5.5 5.5-5.5 5.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
+}
+
+function CloseIcon() {
+  return <svg aria-hidden="true" fill="none" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
 }
 
 export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorProps) {
@@ -58,132 +59,100 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
   const [emailTouched, setEmailTouched] = useState(false);
   const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
   const [formError, setFormError] = useState("");
+  const [isCheckoutSheetOpen, setIsCheckoutSheetOpen] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
+  const mobileEmailRef = useRef<HTMLInputElement>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
 
-  const allowedProductIds = useMemo(
-    () => new Set([...guides.map((guide) => guide.id), completeSet.id]),
-    [completeSet.id, guides],
-  );
-  const completeSetRequested = (searchParams?.get("selection")
-    ?? (typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search).get("selection"))) === "complete";
+  const allowedProductIds = useMemo(() => new Set([...guides.map((guide) => guide.id), completeSet.id]), [completeSet.id, guides]);
+  const completeSetRequested = (searchParams?.get("selection") ?? (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("selection"))) === "complete";
   const completeSetSelected = selectedProductIds.includes(completeSet.id);
-  const selectedGuides = guides.filter((guide) =>
-    selectedProductIds.includes(guide.id),
-  );
-  const individualTotal = selectedGuides.reduce(
-    (total, guide) => total + guide.priceInCents,
-    0,
-  );
-  const completeSetIndividualPrice = guides.reduce(
-    (sum, guide) => sum + guide.priceInCents,
-    0,
-  );
+  const selectedGuides = guides.filter((guide) => selectedProductIds.includes(guide.id));
+  const individualTotal = selectedGuides.reduce((total, guide) => total + guide.priceInCents, 0);
+  const completeSetIndividualPrice = guides.reduce((sum, guide) => sum + guide.priceInCents, 0);
   const bundleDiscount = completeSetIndividualPrice - completeSet.priceInCents;
   const total = completeSetSelected ? completeSet.priceInCents : individualTotal;
   const guideCount = completeSetSelected ? guides.length : selectedGuides.length;
-  const emailError = emailTouched && !isValidEmail(email)
-    ? "Enter a valid email address."
-    : "";
-  const canContinue = guideCount > 0 && isValidEmail(email) && !isCreatingCheckout;
-
+  const emailError = emailTouched && !isValidEmail(email) ? "Enter a valid email address." : "";
+  const canOpenCheckout = guideCount > 0 && !isCreatingCheckout;
+  const canPay = canOpenCheckout && isValidEmail(email);
   const selectionSummary = completeSetSelected
     ? `${completeSet.title} selected. All ${guides.length} guides are included.`
-    : selectedGuides.length === 0
-      ? "No guides selected."
-      : `${selectedGuides.length} guide${selectedGuides.length === 1 ? "" : "s"} selected.`;
+    : selectedGuides.length === 0 ? "No guides selected." : `${selectedGuides.length} guide${selectedGuides.length === 1 ? "" : "s"} selected.`;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const draft = readStoredDraft();
-
       if (completeSetRequested) {
         setSelectedProductIds([completeSet.id]);
         setStatusMessage(`The complete set includes all ${guides.length} guides.`);
       } else if (draft) {
-        const restoredProductIds = (draft.productIds ?? []).filter((id) =>
-          allowedProductIds.has(id),
-        );
-
-        if (restoredProductIds.includes(completeSet.id)) {
-          setSelectedProductIds([completeSet.id]);
-        } else {
-          setSelectedProductIds(restoredProductIds);
-        }
-
+        const ids = (draft.productIds ?? []).filter((id) => allowedProductIds.has(id));
+        setSelectedProductIds(ids.includes(completeSet.id) ? [completeSet.id] : ids);
         setEmail(draft.email ?? "");
       }
-
       setHasRestoredDraft(true);
     });
-
     return () => window.cancelAnimationFrame(frame);
   }, [allowedProductIds, completeSet.id, completeSetRequested, guides.length]);
 
   useEffect(() => {
-    if (!hasRestoredDraft) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      DRAFT_STORAGE_KEY,
-      JSON.stringify({ email, productIds: selectedProductIds }),
-    );
+    if (hasRestoredDraft) window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ email, productIds: selectedProductIds }));
   }, [email, hasRestoredDraft, selectedProductIds]);
 
+  useEffect(() => {
+    if (!isCheckoutSheetOpen) return;
+    const frame = window.requestAnimationFrame(() => mobileEmailRef.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isCreatingCheckout) setIsCheckoutSheetOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isCheckoutSheetOpen, isCreatingCheckout]);
+
   function toggleGuide(guideId: string) {
-    if (isCreatingCheckout) {
-      return;
-    }
+    if (isCreatingCheckout) return;
     setStatusMessage("");
     setFormError("");
-
     if (completeSetSelected) {
       setSelectedProductIds([guideId]);
-      setStatusMessage(
-        "The complete set was replaced with your individual guide selection.",
-      );
+      setStatusMessage("The complete set was replaced with your individual guide selection.");
       return;
     }
-
-    setSelectedProductIds((currentIds) =>
-      currentIds.includes(guideId)
-        ? currentIds.filter((id) => id !== guideId)
-        : [...currentIds, guideId],
-    );
+    setSelectedProductIds((currentIds) => currentIds.includes(guideId) ? currentIds.filter((id) => id !== guideId) : [...currentIds, guideId]);
   }
 
   function toggleCompleteSet() {
-    if (isCreatingCheckout) {
-      return;
-    }
+    if (isCreatingCheckout) return;
     setFormError("");
     setSelectedProductIds((currentIds) => {
-      const nextSelection = currentIds.includes(completeSet.id)
-        ? []
-        : [completeSet.id];
-
-      setStatusMessage(
-        nextSelection.length > 0
-          ? `The complete set includes all ${guides.length} guides.`
-          : "The complete set was removed.",
-      );
-
+      const nextSelection = currentIds.includes(completeSet.id) ? [] : [completeSet.id];
+      setStatusMessage(nextSelection.length > 0 ? `The complete set includes all ${guides.length} guides.` : "The complete set was removed.");
       return nextSelection;
     });
   }
 
+  function openCheckoutSheet() {
+    if (!canOpenCheckout) return;
+    setFormError("");
+    setIsCheckoutSheetOpen(true);
+  }
+
+  function updateEmail(value: string) {
+    setEmail(value);
+    setFormError("");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (guideCount === 0) {
       setFormError("Select at least one guide to continue.");
       window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
       return;
     }
-
     if (!isValidEmail(email)) {
       setEmailTouched(true);
       setFormError("Enter a valid email address to continue.");
@@ -194,32 +163,21 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
     setFormError("");
     setStatusMessage("");
     setIsCreatingCheckout(true);
-
     const idempotencyKey = idempotencyKeyRef.current ?? createIdempotencyKey();
     idempotencyKeyRef.current = idempotencyKey;
-
     try {
       const response = await fetch("/api/checkout", {
         body: JSON.stringify({ email, productIds: selectedProductIds }),
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-        },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
         method: "POST",
       });
       const result = (await response.json().catch(() => null)) as CheckoutResponse | null;
-
       if (!response.ok || !result || !("authorizationUrl" in result)) {
         idempotencyKeyRef.current = null;
-        setFormError(
-          result && "error" in result
-            ? formatCheckoutError(result.error)
-            : "We could not start your payment. Please try again.",
-        );
+        setFormError(result && "error" in result ? formatCheckoutError(result.error) : "We could not start your payment. Please try again.");
         window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
         return;
       }
-
       window.localStorage.removeItem(DRAFT_STORAGE_KEY);
       window.location.assign(result.authorizationUrl);
     } catch {
@@ -231,227 +189,68 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
     }
   }
 
+  const emailField = (id: string, inputRef?: React.RefObject<HTMLInputElement | null>) => {
+    const helpId = id === "customer-email" ? "email-help" : `${id}-help`;
+    const errorId = id === "customer-email" ? "email-error" : `${id}-error`;
+
+    return (
+      <>
+      <label className="checkout-email-label" htmlFor={id}>Email address</label>
+      <p className="checkout-email-copy">Your receipt and download link will be sent here.</p>
+      <input aria-describedby={emailError ? `${helpId} ${errorId}` : helpId} aria-invalid={emailError ? true : undefined} autoComplete="email" className="checkout-email-input" disabled={isCreatingCheckout} id={id} name="email" onBlur={() => setEmailTouched(true)} onChange={(event) => updateEmail(event.target.value)} placeholder="name@example.com" ref={inputRef} type="email" value={email} />
+      <span className="sr-only" id={helpId}>Enter the email address where you want to receive your receipt and download link.</span>
+      {emailError ? <p className="checkout-email-error" id={errorId}>{emailError}</p> : null}
+    </>
+  );
+  };
+
   return (
-    <section aria-labelledby="kit-selector-heading" className="mt-12">
-      <div className="mx-auto max-w-4xl">
-        <div className="text-center">
-          <h2 id="kit-selector-heading" className="text-3xl font-semibold text-stone-950">
-            Choose the plan that gives you a clear start
-          </h2>
-          <p className="mt-3 text-base text-stone-700">
-            Choose the complete system to keep every homeowner task in one place, or select the guide that fits the question in front of you.
-          </p>
-        </div>
-
-        <form aria-busy={isCreatingCheckout} className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]" onSubmit={handleSubmit}>
-          {formError ? (
-            <div
-              aria-labelledby="selection-error-heading"
-              className="rounded-md border border-red-700 bg-white p-4 text-red-950 lg:col-span-2"
-              ref={errorSummaryRef}
-              role="alert"
-              tabIndex={-1}
-            >
-              <h3 id="selection-error-heading" className="text-base font-semibold">
-                Secure checkout could not start.
-              </h3>
-              <p className="mt-1 text-sm">{formError}</p>
-            </div>
-          ) : null}
-          <fieldset className="grid gap-3">
+    <section aria-labelledby="kit-selector-heading" className="kit-selector">
+      <div className="kit-selector-shell">
+        <div className="kit-selector-intro"><h2 id="kit-selector-heading">Choose your homeowner guides</h2><p>Keep every homeowner task in one place, or pick the guides that fit your needs.</p></div>
+        <form aria-busy={isCreatingCheckout} className="kit-selector-form" onSubmit={handleSubmit}>
+          {formError && !isCheckoutSheetOpen ? <CheckoutErrorMessage error={formError} errorRef={errorSummaryRef} /> : null}
+          <fieldset className="kit-selector-options">
             <legend className="sr-only">Choose your guides</legend>
-            <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-stone-950 bg-stone-100 p-4 text-left transition-colors duration-200 hover:bg-stone-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-2">
-              <input
-                checked={completeSetSelected}
-                className="mt-1 size-5 accent-stone-950"
-                disabled={isCreatingCheckout}
-                name="complete-set"
-                onChange={toggleCompleteSet}
-                type="checkbox"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-base font-semibold text-stone-950">
-                  {completeSet.title}
-                </span>
-                <span className="mt-1 block text-sm text-stone-700">
-                  {completeSet.description}
-                </span>
-                <span className="mt-2 block text-sm font-medium text-stone-950">
-                  Save {formatPrice(bundleDiscount)} compared with individual guides.
-                </span>
-              </span>
-              <span className="shrink-0 text-base font-semibold text-stone-950">
-                {formatPrice(completeSet.priceInCents)}
-              </span>
+            <label className={`bundle-option ${completeSetSelected ? "is-selected" : ""}`}>
+              <input checked={completeSetSelected} disabled={isCreatingCheckout} name="complete-set" onChange={toggleCompleteSet} type="checkbox" />
+              <span className="bundle-check" aria-hidden="true"><CheckIcon /></span>
+              <span className="bundle-artwork" aria-hidden="true">{guides.slice(0, 3).map((guide, index) => <Image alt="" className={`bundle-book bundle-book-${index + 1}`} height={106} key={guide.id} src={`/guide-covers/${guide.slug}.png`} width={70} />)}<span className="bundle-saving">Save {formatPrice(bundleDiscount)}</span></span>
+              <span className="bundle-copy"><span className="best-value">Best value</span><span className="bundle-title">{completeSet.title}</span><span className="bundle-description">{completeSet.description}</span><span className="bundle-benefits"><span><CheckIcon />{guides.length} comprehensive guides</span><span><CheckIcon />Editable PDF and workbook files</span><span><CheckIcon />Everything you need in one place</span></span></span>
+              <span className="bundle-price"><span>{formatPrice(completeSet.priceInCents)}</span><del>{formatPrice(completeSetIndividualPrice)}</del></span>
             </label>
-            <details className="group rounded-lg border border-stone-300 bg-white">
-              <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 p-4 text-base font-semibold text-stone-950 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-inset">
-                Build a custom kit instead
-                <span aria-hidden="true" className="text-xl font-normal transition-transform duration-200 group-open:rotate-45">+</span>
-              </summary>
-              <div className="grid gap-3 border-t border-stone-200 p-3">
-                {guides.map((guide) => {
-                  const checked = selectedProductIds.includes(guide.id);
-
-                  return (
-                    <div key={guide.id} className="rounded-lg border border-stone-300 bg-white">
-                      <label className="flex min-h-11 cursor-pointer items-start gap-3 p-4 text-left transition-colors duration-200 hover:bg-stone-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-2">
-                        <input
-                          checked={checked}
-                          className="mt-1 size-5 accent-stone-950"
-                          disabled={isCreatingCheckout}
-                          name="guides"
-                          onChange={() => toggleGuide(guide.id)}
-                          type="checkbox"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-base font-semibold text-stone-950">
-                            {guide.title}
-                          </span>
-                          <span className="mt-1 block text-sm text-stone-700">
-                            {guide.description}
-                          </span>
-                          <span className="mt-2 block text-sm text-stone-600">
-                            Includes {guide.includedFiles.join(" and ")}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-base font-semibold text-stone-950">
-                          {formatPrice(guide.priceInCents)}
-                        </span>
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
+            <div className="guide-divider"><span>Or pick individual guides</span></div>
+            <div className="guide-section-heading"><div><h3>Select individual guides</h3><p>Choose the guides that fit your needs.</p></div><button disabled={isCreatingCheckout} onClick={() => setSelectedProductIds(guides.map((guide) => guide.id))} type="button">Select all</button></div>
+            <div className="guide-options-grid">{guides.map((guide) => {
+              const checked = selectedProductIds.includes(guide.id);
+              return <label className={`guide-option ${checked ? "is-selected" : ""}`} key={guide.id}><input checked={checked} disabled={isCreatingCheckout} name="guides" onChange={() => toggleGuide(guide.id)} type="checkbox" /><span className="guide-check" aria-hidden="true"><CheckIcon /></span><GuideArtwork guide={guide} /><span className="guide-option-copy"><span className="guide-option-title">{guide.title}</span><span className="guide-option-description">{guide.description}</span><span className="guide-files">PDF <b>+</b> Editable workbook</span></span><span className="guide-option-price">{formatPrice(guide.priceInCents)}</span></label>;
+            })}</div>
           </fieldset>
-
-          <aside className="order-first h-fit rounded-lg border border-stone-300 bg-white p-4 lg:order-none lg:sticky lg:top-6">
-            <h3 className="text-lg font-semibold text-stone-950">Your selection</h3>
-            <p aria-live="polite" className="mt-2 text-sm text-stone-700">
-              {selectionSummary}
-            </p>
-            {completeSetSelected ? (
-              <details className="mt-4 text-sm text-stone-700">
-                <summary className="cursor-pointer font-semibold text-stone-950 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2">
-                  See all included guides
-                </summary>
-                <ul className="mt-3 space-y-1">
-                  {guides.map((guide) => (
-                    <li key={guide.id}>{guide.title}</li>
-                  ))}
-                </ul>
-              </details>
-            ) : selectedGuides.length > 0 ? (
-              <ul className="mt-4 space-y-1 text-sm text-stone-700">
-                {selectedGuides.map((guide) => (
-                  <li key={guide.id}>{guide.title}</li>
-                ))}
-              </ul>
-            ) : null}
-            <dl className="mt-4 space-y-2 text-sm text-stone-700">
-              <div className="flex items-center justify-between gap-3">
-                <dt>Guides</dt>
-                <dd>{guideCount}</dd>
-              </div>
-              {completeSetSelected ? (
-                <>
-                  <div className="flex items-center justify-between gap-3">
-                    <dt>Individual total</dt>
-                    <dd>{formatPrice(completeSetIndividualPrice)}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <dt>Bundle saving</dt>
-                    <dd>{formatPrice(bundleDiscount)}</dd>
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-between gap-3">
-                  <dt>Subtotal</dt>
-                  <dd>{formatPrice(individualTotal)}</dd>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3 border-t border-stone-200 pt-2 text-base font-semibold text-stone-950">
-                <dt>Total</dt>
-                <dd>{formatPrice(total)}</dd>
-              </div>
-            </dl>
-
-            <label className="mt-6 block text-sm font-semibold text-stone-950" htmlFor="customer-email">
-              Email address
-            </label>
-            <p className="mt-1 text-sm text-stone-700">
-              Your receipt and download link will be sent here.
-            </p>
-            <input
-              aria-describedby={emailError ? "email-help email-error" : "email-help"}
-              aria-invalid={emailError ? true : undefined}
-              autoComplete="email"
-              className="mt-3 min-h-11 w-full rounded-md border border-stone-400 bg-white px-3 py-2 text-base text-stone-950 outline-none transition-colors duration-200 placeholder:text-stone-500 focus:border-stone-950 focus:ring-2 focus:ring-stone-950 focus:ring-offset-2"
-              id="customer-email"
-              name="email"
-              disabled={isCreatingCheckout}
-              onBlur={() => setEmailTouched(true)}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                setFormError("");
-              }}
-              placeholder="name@example.com"
-              type="email"
-              value={email}
-            />
-            <span id="email-help" className="sr-only">
-              Enter the email address where you want to receive your receipt and download link.
-            </span>
-            {emailError ? (
-              <p className="mt-2 text-sm text-red-800" id="email-error">
-                {emailError}
-              </p>
-            ) : null}
-
-            <button
-              className="mt-6 min-h-11 w-full rounded-md bg-stone-950 px-3 py-2 text-base font-semibold text-white transition-colors duration-200 hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-stone-400"
-              disabled={!canContinue}
-              type="submit"
-            >
-              {isCreatingCheckout ? "Starting secure payment" : "Pay securely"}
-            </button>
-            {!canContinue ? (
-              <p className="mt-2 text-sm text-stone-700">
-                {guideCount === 0
-                  ? "Select at least one guide to continue."
-                  : "Enter a valid email address to continue."}
-              </p>
-            ) : null}
-            <p className="mt-3 text-sm text-stone-700">
-              Secure card payment is handled by Paystack. Your download link is sent after payment confirmation.
-            </p>
-            <p className="mt-2 text-sm text-stone-700">
-              Need help with delivery or access? Read our <Link className="underline underline-offset-4" href="/delivery">delivery policy</Link> and <Link className="underline underline-offset-4" href="/refunds">refund policy</Link>.
-            </p>
-            {statusMessage ? (
-              <p aria-live="polite" className="mt-3 text-sm text-stone-800">
-                {statusMessage}
-              </p>
-            ) : null}
+          <aside className="selection-panel">
+            <h3>Your selection</h3><p aria-live="polite" className="selection-summary">{selectionSummary}</p>
+            {completeSetSelected ? <ul className="selection-list">{guides.map((guide) => <li key={guide.id}><GuideArtwork guide={guide} size="list" /><span>{guide.title}</span></li>)}</ul> : selectedGuides.length > 0 ? <ul className="selection-list">{selectedGuides.map((guide) => <li key={guide.id}><GuideArtwork guide={guide} size="list" /><span>{guide.title}</span></li>)}</ul> : null}
+            <dl className="selection-totals"><div><dt>Guides</dt><dd>{guideCount}</dd></div>{completeSetSelected ? <><div><dt>Individual total</dt><dd>{formatPrice(completeSetIndividualPrice)}</dd></div><div><dt>Bundle saving</dt><dd>{formatPrice(bundleDiscount)}</dd></div></> : <div><dt>Subtotal</dt><dd>{formatPrice(individualTotal)}</dd></div>}<div className="selection-total"><dt>Total</dt><dd>{formatPrice(total)}</dd></div></dl>
+            <div className="desktop-checkout">{emailField("customer-email")}<button className="pay-button" disabled={!canPay} type="submit">{isCreatingCheckout ? "Starting secure payment" : "Pay securely"}</button><CheckoutNotes /></div>
+            {statusMessage ? <p aria-live="polite" className="selection-status">{statusMessage}</p> : null}
           </aside>
+          <div className="mobile-checkout-bar" aria-live="polite"><span><strong>{guideCount} guide{guideCount === 1 ? "" : "s"} selected</strong><b>{formatPrice(total)} total</b></span><button disabled={!canOpenCheckout} onClick={openCheckoutSheet} type="button">Continue to checkout <ArrowIcon /></button></div>
+          {isCheckoutSheetOpen ? <div className="checkout-sheet-layer"><button aria-label="Close checkout" className="checkout-sheet-scrim" disabled={isCreatingCheckout} onClick={() => setIsCheckoutSheetOpen(false)} type="button" /><section aria-labelledby="checkout-sheet-heading" aria-modal="true" className="checkout-sheet" role="dialog"><div className="checkout-sheet-handle" /><div className="checkout-sheet-heading"><div><p>{guideCount} guide{guideCount === 1 ? "" : "s"} selected · {formatPrice(total)}</p><h3 id="checkout-sheet-heading">Where should we send your guides?</h3></div><button aria-label="Close checkout" disabled={isCreatingCheckout} onClick={() => setIsCheckoutSheetOpen(false)} type="button"><CloseIcon /></button></div>{formError ? <CheckoutErrorMessage error={formError} errorRef={errorSummaryRef} /> : null}<div className="checkout-sheet-form">{emailField("customer-email-mobile", mobileEmailRef)}<button className="pay-button" disabled={!canPay} type="submit">{isCreatingCheckout ? "Starting secure payment" : "Pay securely"}</button><CheckoutNotes /></div></section></div> : null}
         </form>
       </div>
     </section>
   );
 }
 
-type CheckoutError = { code: string; message: string; requestId?: string };
+function CheckoutErrorMessage({ error, errorRef }: { error: string; errorRef: React.RefObject<HTMLDivElement | null> }) {
+  return <div aria-labelledby="selection-error-heading" className="checkout-error" ref={errorRef} role="alert" tabIndex={-1}><h3 id="selection-error-heading">Secure checkout could not start.</h3><p>{error}</p></div>;
+}
 
-type CheckoutResponse =
-  | { authorizationUrl: string }
-  | { error: CheckoutError };
+function CheckoutNotes() {
+  return <><p className="secure-payment-note">Secure card payment is handled by Paystack. Your download link is sent after payment confirmation.</p><p className="checkout-policy-note">Need help? Read our <Link href="/delivery">delivery policy</Link> and <Link href="/refunds">refund policy</Link>.</p></>;
+}
 
 function createIdempotencyKey() {
-  if (typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-
+  if (typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
   const bytes = new Uint8Array(24);
   window.crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");

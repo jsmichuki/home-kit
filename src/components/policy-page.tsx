@@ -31,18 +31,6 @@ export function PolicyPage({
           <p className="mt-4 text-lg text-stone-700">{description}</p>
         </header>
 
-        <aside
-          aria-label="Draft policy notice"
-          className="mt-8 rounded-lg border border-amber-300 bg-amber-50 p-5 text-stone-800"
-        >
-          <p className="font-semibold">Draft placeholder for review</p>
-          <p className="mt-2 text-sm leading-6">
-            This page is a sensible operating draft, not jurisdiction specific
-            legal advice. Have qualified counsel review it before live payment
-            is enabled.
-          </p>
-        </aside>
-
         <div className="mt-10 space-y-8 leading-7 text-stone-800">
           {children}
         </div>
