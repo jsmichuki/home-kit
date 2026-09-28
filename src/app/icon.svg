@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">The Complete New Homeowner System</title>
+  <rect width="512" height="512" rx="112" fill="#1c1917"/>
+  <path d="M256 86 94 230v176c0 22.1 17.9 40 40 40h244c22.1 0 40-17.9 40-40V230L256 86Z" fill="#fafaf9"/>
+  <path d="M70 254 256 88l186 166-31 35-155-138-155 138-31-35Z" fill="#d6d3d1"/>
+  <path d="M212 446V296c0-13.3 10.7-24 24-24h40c13.3 0 24 10.7 24 24v150H212Z" fill="#a16207"/>
+  <circle cx="277" cy="360" r="10" fill="#fafaf9"/>
+</svg>
