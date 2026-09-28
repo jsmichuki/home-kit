@@ -155,7 +155,7 @@ describe("buildPaystackInitializePayload", () => {
     expect(
       buildPaystackInitializePayload({
         amountInSubunits: 6900,
-        callbackUrl: "https://astralrefine.com/payment/confirmation?reference=order_123",
+        callbackUrl: "https://astralrefine.com/payment/confirmation?confirmation=opaque-confirmation-value",
         catalogueVersion: 3,
         currency: "USD",
         deliveryEmail: "Buyer@Example.com",
@@ -164,7 +164,7 @@ describe("buildPaystackInitializePayload", () => {
       }),
     ).toEqual({
       amount: "6900",
-      callback_url: "https://astralrefine.com/payment/confirmation?reference=order_123",
+      callback_url: "https://astralrefine.com/payment/confirmation?confirmation=opaque-confirmation-value",
       channels: ["card"],
       currency: "USD",
       email: "Buyer@Example.com",

@@ -116,4 +116,44 @@ describe("createCheckout", () => {
 
     expect(mocks.ordersUpdate).not.toHaveBeenCalled();
   });
+
+  it("leaves the transaction reference for Paystack to append to the callback", async () => {
+    const callbackUrl = "https://checkout.paystack.com/authorize";
+    const updateResult = {
+      eq: vi.fn().mockReturnValue({
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      }),
+    };
+    mocks.ordersUpdate.mockReturnValue(updateResult);
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const payload = JSON.parse(String(init.body)) as { reference: string };
+
+      return new Response(JSON.stringify({
+        data: {
+          authorization_url: callbackUrl,
+          reference: payload.reference,
+        },
+        status: true,
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createCheckout({
+        confirmationSecret: "confirmation-secret",
+        deliveryEmail: "buyer@example.com",
+        idempotencyKey: "idempotency-key",
+        productIds: ["guide-id"],
+      }),
+    ).resolves.toEqual({ authorizationUrl: callbackUrl });
+
+    const initialized = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      callback_url: string;
+    };
+    const paymentCallback = new URL(initialized.callback_url);
+
+    expect(paymentCallback.pathname).toBe("/payment/confirmation");
+    expect(paymentCallback.searchParams.get("confirmation")).toBe("confirmation-secret");
+    expect(paymentCallback.searchParams.has("reference")).toBe(false);
+  });
 });

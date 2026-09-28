@@ -149,7 +149,9 @@ export async function createCheckout(
   }
 
   const callbackUrl = new URL("/payment/confirmation", siteUrl);
-  callbackUrl.searchParams.set("reference", reference);
+  // Paystack appends its verified transaction reference to the callback URL.
+  // Supplying it here as well creates duplicate `reference` query parameters,
+  // which Next.js deliberately treats as an invalid confirmation callback.
   callbackUrl.searchParams.set("confirmation", input.confirmationSecret);
 
   let authorizationUrl: string;

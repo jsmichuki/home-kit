@@ -15,7 +15,7 @@ describe("sanitizeForLog", () => {
       buyer_email: "buyer@example.com",
       confirmation: "opaque-confirmation-token",
       nested: {
-        authorization: "Bearer sk_live_1234567890abcdef",
+        authorization: "Bearer example-payment-secret",
         body: { card_number: "4242 4242 4242 4242" },
       },
       url: "https://app.example.test/downloads/opaque-access-token-with-entropy?token=opaque-token&reference=order_123",
