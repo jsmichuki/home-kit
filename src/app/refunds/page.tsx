@@ -4,14 +4,14 @@ import { PolicyPage } from "@/components/policy-page";
 
 export const metadata: Metadata = {
   title: "Refunds | The Complete New Homeowner System",
-  description: "Draft refund policy for guide purchases.",
+  description: "Refund policy for guide purchases.",
 };
 
 export default function RefundsPage() {
   return (
     <PolicyPage
       title="Refund policy"
-      description="The draft approach to refund requests for digital guides."
+      description="How we handle requests about digital guide purchases."
     >
       <section>
         <h2 className="text-2xl font-semibold tracking-tight">Requesting a refund</h2>
@@ -27,16 +27,15 @@ export default function RefundsPage() {
         <p className="mt-3">
           We will review the purchase record and first try to restore access or
           replace a faulty file. If that does not resolve an eligible issue, we
-          may issue a refund to the original payment method. Processing time can
-          depend on the payment provider and your card issuer.
+          will refund the original payment method. Processing time can depend on
+          the payment provider and your card issuer.
         </p>
       </section>
       <section>
         <h2 className="text-2xl font-semibold tracking-tight">Your legal rights</h2>
         <p className="mt-3">
-          This draft does not limit any consumer rights that apply where you
-          live. The final policy will state any local rules for digital content
-          and the point at which download access begins.
+          This policy does not limit any consumer rights that apply where you
+          live. Download access begins after payment confirmation.
         </p>
       </section>
     </PolicyPage>

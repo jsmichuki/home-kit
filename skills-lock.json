@@ -7,11 +7,23 @@
       "skillPath": "skills/accessibility/SKILL.md",
       "computedHash": "612f913bcb03f0787b103c848cd7664b676a9aaf31f25d3270cc69cf5caaab95"
     },
+    "cold-email": {
+      "source": "coreyhaines31/marketingskills",
+      "sourceType": "github",
+      "skillPath": "skills/cold-email/SKILL.md",
+      "computedHash": "be0b73511a6244b8b8aa9126225844cfe9e492f4c1ee6bffc57344ce5ee2a6e8"
+    },
     "copywriting": {
       "source": "coreyhaines31/marketingskills",
       "sourceType": "github",
       "skillPath": "skills/copywriting/SKILL.md",
       "computedHash": "779f05c8be67da475e6a7af78de3e0400b0038e371ce898dd6ff9d3331aab7db"
+    },
+    "email-marketing": {
+      "source": "claude-office-skills/skills",
+      "sourceType": "github",
+      "skillPath": "email-marketing/SKILL.md",
+      "computedHash": "4af2dfe3c79e1f67c8694aad7f6675f06585ad4394e9a4b694d141b3d3fab17a"
     },
     "impeccable": {
       "source": "pbakaus/impeccable",

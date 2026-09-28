@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import {
   CheckoutValidationError,
   parseCheckoutRequest,
@@ -9,6 +10,7 @@ import {
   createConfirmationSecret,
   isValidIdempotencyKey,
 } from "@/lib/checkout";
+import { logOperationalEvent } from "@/lib/observability/safe-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,6 +26,7 @@ type RateLimitEntry = {
 const checkoutAttempts = new Map<string, RateLimitEntry>();
 
 export async function POST(request: NextRequest) {
+  const checkoutRequestId = randomUUID();
   let parsedRequest;
   try {
     parsedRequest = parseCheckoutRequest(await request.json());
@@ -77,19 +80,36 @@ export async function POST(request: NextRequest) {
     }
 
     if (error instanceof CheckoutServiceError) {
-      return errorResponse(error.message, error.code, error.status);
+      logOperationalEvent("error", "checkout.request_failed", {
+        checkoutRequestId,
+        code: error.code,
+        error,
+        stage: error.stage ?? "unknown",
+        status: error.status,
+      });
+      return errorResponse(error.message, error.code, error.status, checkoutRequestId);
     }
 
+    logOperationalEvent("error", "checkout.request_failed", {
+      checkoutRequestId,
+      error,
+      stage: "unexpected",
+      status: 502,
+    });
     return errorResponse(
-      "We could not start your payment. Please try again.",
+      "Secure checkout is temporarily unavailable. Your selection is saved, so please try again in a moment.",
       "PAYMENT_UNAVAILABLE",
       502,
+      checkoutRequestId,
     );
   }
 }
 
-function errorResponse(message: string, code: string, status: number) {
-  return NextResponse.json({ error: { code, message } }, { status });
+function errorResponse(message: string, code: string, status: number, requestId?: string) {
+  return NextResponse.json(
+    { error: { code, message, ...(requestId ? { requestId } : {}) } },
+    { status },
+  );
 }
 
 function getClientAddress(request: NextRequest) {

@@ -8,6 +8,7 @@ import {
   resolveCheckoutSelection,
 } from "@/lib/checkout-contract";
 import { CATALOGUE_CURRENCY } from "@/lib/catalog";
+import { logOperationalEvent } from "@/lib/observability/safe-log";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const PAYSTACK_INITIALIZE_URL = "https://api.paystack.co/transaction/initialize";
@@ -57,6 +58,13 @@ type PaystackInitializeResponse = {
   status?: unknown;
 };
 
+type CheckoutFailureStage =
+  | "catalogue_load"
+  | "configuration"
+  | "order_insert"
+  | "order_update"
+  | "paystack_initialize";
+
 export class CheckoutServiceError extends Error {
   constructor(
     readonly code:
@@ -65,6 +73,7 @@ export class CheckoutServiceError extends Error {
       | "PAYMENT_UNAVAILABLE",
     message: string,
     readonly status: number,
+    readonly stage?: CheckoutFailureStage,
   ) {
     super(message);
   }
@@ -112,16 +121,33 @@ export async function createCheckout(
     .maybeSingle();
 
   if (insertError) {
-    const existing = await findExistingCheckout(supabase, idempotencyKeyHash);
+    logOperationalEvent("warn", "checkout.order_insert_failed", {
+      databaseError: summarizeDatabaseError(insertError),
+    });
+    const { data: existing, error: existingLookupError } = await findExistingCheckout(
+      supabase,
+      idempotencyKeyHash,
+    );
+
+    if (existingLookupError) {
+      logOperationalEvent("error", "checkout.existing_order_lookup_failed", {
+        databaseError: summarizeDatabaseError(existingLookupError),
+      });
+    }
+
     if (existing?.paystack_authorization_url) {
+      logOperationalEvent("info", "checkout.existing_authorization_reused", {
+        status: existing.status,
+      });
       return { authorizationUrl: existing.paystack_authorization_url };
     }
 
     if (existing?.status === "failed") {
       throw new CheckoutServiceError(
         "PAYMENT_UNAVAILABLE",
-        "We could not start your payment. Please try again.",
+        "Secure checkout is temporarily unavailable. Your selection is saved, so please try again in a moment.",
         502,
+        "order_insert",
       );
     }
 
@@ -130,21 +156,25 @@ export async function createCheckout(
         "CHECKOUT_IN_PROGRESS",
         "Your payment is still being prepared. Please try again in a moment.",
         409,
+        "order_insert",
       );
     }
 
     throw new CheckoutServiceError(
       "PAYMENT_UNAVAILABLE",
-      "We could not start your payment. Please try again.",
+      "Secure checkout is temporarily unavailable. Your selection is saved, so please try again in a moment.",
       502,
+      "order_insert",
     );
   }
 
   if (!insertedOrder) {
+    logOperationalEvent("error", "checkout.order_insert_missing", {});
     throw new CheckoutServiceError(
       "PAYMENT_UNAVAILABLE",
-      "We could not start your payment. Please try again.",
+      "Secure checkout is temporarily unavailable. Your selection is saved, so please try again in a moment.",
       502,
+      "order_insert",
     );
   }
 
@@ -166,14 +196,19 @@ export async function createCheckout(
       publicOrderId: publicId,
       reference,
     });
-  } catch {
+  } catch (error) {
     // A timeout or connection drop can happen after Paystack accepts the
     // request. Keep this order pending so a later verified webhook can still
     // fulfill it; changing it to failed would strand a legitimate payment.
+    logOperationalEvent("error", "checkout.paystack_initialize_failed", {
+      error,
+      publicOrderId: publicId,
+    });
     throw new CheckoutServiceError(
       "PAYMENT_UNAVAILABLE",
-      "We could not start your payment. Please try again.",
+      "Secure checkout is temporarily unavailable. Your selection is saved, so please try again in a moment.",
       502,
+      "paystack_initialize",
     );
   }
 
@@ -184,10 +219,15 @@ export async function createCheckout(
     .eq("status", "payment_pending");
 
   if (updateError) {
+    logOperationalEvent("error", "checkout.order_update_failed", {
+      databaseError: summarizeDatabaseError(updateError),
+      publicOrderId: publicId,
+    });
     throw new CheckoutServiceError(
       "CHECKOUT_IN_PROGRESS",
       "Your payment is still being prepared. Please try again in a moment.",
       409,
+      "order_update",
     );
   }
 
@@ -227,10 +267,17 @@ async function getCheckoutCatalogue(): Promise<CheckoutCatalogue> {
     bundleGuidesResult.error ||
     pricesResult.error
   ) {
+    logOperationalEvent("error", "checkout.catalogue_load_failed", {
+      bundleGuidesError: summarizeDatabaseError(bundleGuidesResult.error),
+      bundlesError: summarizeDatabaseError(bundlesResult.error),
+      guidesError: summarizeDatabaseError(guidesResult.error),
+      pricesError: summarizeDatabaseError(pricesResult.error),
+    });
     throw new CheckoutServiceError(
       "PAYMENT_UNAVAILABLE",
-      "We could not start your payment. Please try again.",
+      "Secure checkout is temporarily unavailable. Your selection is saved, so please try again in a moment.",
       502,
+      "catalogue_load",
     );
   }
 
@@ -280,13 +327,13 @@ async function findExistingCheckout(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   idempotencyKeyHash: string,
 ) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("commerce_orders")
     .select("paystack_authorization_url, status")
     .eq("checkout_idempotency_key_hash", idempotencyKeyHash)
     .maybeSingle();
 
-  return data as ExistingCheckoutOrder | null;
+  return { data: data as ExistingCheckoutOrder | null, error };
 }
 
 async function initializePaystackTransaction({
@@ -335,7 +382,9 @@ async function initializePaystackTransaction({
 
     const payload = (await response.json().catch(() => null)) as PaystackInitializeResponse | null;
     if (!response.ok || !payload?.status || payload.data?.reference !== reference) {
-      throw new Error("Paystack initialization failed.");
+      throw new Error(
+        `Paystack initialization failed with HTTP ${response.status}: ${describeProviderMessage(payload?.message)}`,
+      );
     }
 
     return validatePaystackAuthorizationUrl(payload.data.authorization_url);
@@ -363,10 +412,12 @@ function validatePaystackAuthorizationUrl(value: unknown) {
 function getSiteUrl() {
   const value = process.env.NEXT_PUBLIC_SITE_URL;
   if (!value) {
+    logOperationalEvent("error", "checkout.configuration_missing", { value: "site_url" });
     throw new CheckoutServiceError(
       "CONFIGURATION_ERROR",
       "Checkout is not configured yet. Please try again later.",
       503,
+      "configuration",
     );
   }
 
@@ -378,10 +429,12 @@ function getSiteUrl() {
     }
     return url;
   } catch {
+    logOperationalEvent("error", "checkout.configuration_invalid", { value: "site_url" });
     throw new CheckoutServiceError(
       "CONFIGURATION_ERROR",
       "Checkout is not configured yet. Please try again later.",
       503,
+      "configuration",
     );
   }
 }
@@ -389,10 +442,12 @@ function getSiteUrl() {
 function requirePaystackSecret() {
   const value = process.env.PAYSTACK_SECRET_KEY;
   if (!value) {
+    logOperationalEvent("error", "checkout.configuration_missing", { value: "paystack_secret" });
     throw new CheckoutServiceError(
       "CONFIGURATION_ERROR",
       "Checkout is not configured yet. Please try again later.",
       503,
+      "configuration",
     );
   }
   return value;
@@ -404,4 +459,20 @@ function randomToken(bytes: number) {
 
 function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function summarizeDatabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return error ? String(error) : null;
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown };
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    message: typeof candidate.message === "string" ? candidate.message : undefined,
+  };
+}
+
+function describeProviderMessage(value: unknown) {
+  return typeof value === "string" ? value : "no provider message";
 }

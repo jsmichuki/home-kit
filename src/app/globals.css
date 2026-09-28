@@ -54,10 +54,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .hero-photo, .guide-moment-photo, .home-story-photo { object-fit: cover; }
 .hero-photo { object-position: center; }
 .hero-photo-shade, .home-story-shade { background: rgba(20, 43, 25, .44); inset: 0; position: absolute; }
-.hero-guide { position: absolute; width: 136px; z-index: 2; }
-.hero-guide-main { bottom: -6px; left: 50%; transform: translateX(-50%); width: 162px; z-index: 4; }
-.hero-guide-back-left { bottom: 18px; left: calc(50% - 154px); transform: rotate(-10deg); }
-.hero-guide-back-right { bottom: 18px; left: calc(50% + 18px); transform: rotate(10deg); }
+.hero-guide { bottom: 0; position: absolute; width: 148px; z-index: 2; }
+.hero-guide-main { left: 50%; transform: translateX(-50%); width: 178px; z-index: 4; }
+.hero-guide-back-left { left: calc(50% - 166px); transform: rotate(-10deg); }
+.hero-guide-back-right { left: calc(50% + 18px); transform: rotate(10deg); }
 .hero-scene-label { background: rgba(255,253,248,.92); border-radius: 999px; bottom: 16px; color: var(--ink); font-size: 12px; font-weight: 700; left: 16px; padding: 8px 12px; position: absolute; z-index: 5; }
 
 .intro-section, .moments-section, .library-section, .how-section, .faq-section { margin: auto; max-width: 1200px; padding-left: 16px; padding-right: 16px; }
@@ -73,13 +73,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .moments-section { padding-bottom: 96px; padding-top: 96px; }
 .guide-moment { align-items: center; display: grid; gap: 32px; margin: auto; max-width: 980px; }
 .guide-moment + .guide-moment { margin-top: 80px; }
-.guide-moment-media { align-items: end; border-radius: 12px; display: flex; height: 340px; justify-content: center; overflow: hidden; padding: 24px; position: relative; }
+.guide-moment-media { align-items: end; border-radius: 12px; display: flex; height: 340px; justify-content: center; overflow: hidden; padding: 24px 24px 0; position: relative; }
 .guide-moment-lime { background: var(--sun); }
 .guide-moment-paper { background: #e6eadc; }
 .guide-moment-garden { background: var(--moss); }
 .guide-moment-moss { background: var(--ink); }
 .guide-moment-photo { inset: 0; opacity: .74; position: absolute; }
-.guide-moment-cover { max-width: 172px; position: relative; z-index: 1; }
+.guide-moment-cover { max-width: 188px; position: relative; z-index: 1; }
 .guide-moment-copy h3 { font-size: 30px; font-weight: 700; letter-spacing: -.04em; line-height: 1; margin-top: 16px; text-wrap: balance; }
 .guide-moment-body { color: var(--sage-dark); font-size: 16px; line-height: 24px; margin-top: 16px; text-wrap: pretty; }
 .guide-moment-note { color: var(--sage-dark); font-size: 14px; line-height: 20px; margin-top: 16px; }
@@ -135,6 +135,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .reveal-word { color: color-mix(in srgb, var(--ink) 28%, transparent); display: inline-block; transition: color 700ms cubic-bezier(.32,.72,0,1); }
 .tagline-revealed .reveal-word { color: var(--ink); }
 
-@media (min-width: 640px) { .site-header { padding-left: 24px; padding-right: 24px; } .hero-section { padding-left: 24px; padding-right: 24px; } .hero-copy h1 { font-size: 60px; } .hero-scene { height: 500px; } .hero-guide { width: 180px; } .hero-guide-main { width: 222px; } .hero-guide-back-left { left: calc(50% - 220px); } .hero-guide-back-right { left: calc(50% + 40px); } .intro-section, .moments-section, .library-section, .how-section, .faq-section { padding-left: 24px; padding-right: 24px; } .guide-moment-media { height: 440px; } .guide-moment-cover { max-width: 220px; } .library-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } .final-cta-section { margin-left: 24px; margin-right: 24px; padding: 48px; } .home-kit-selector { padding-left: 24px; padding-right: 24px; } }
+@media (min-width: 640px) { .site-header { padding-left: 24px; padding-right: 24px; } .hero-section { padding-left: 24px; padding-right: 24px; } .hero-copy h1 { font-size: 60px; } .hero-scene { height: 500px; } .hero-guide { width: 196px; } .hero-guide-main { width: 240px; } .hero-guide-back-left { left: calc(50% - 236px); } .hero-guide-back-right { left: calc(50% + 40px); } .intro-section, .moments-section, .library-section, .how-section, .faq-section { padding-left: 24px; padding-right: 24px; } .guide-moment-media { height: 440px; } .guide-moment-cover { max-width: 236px; } .library-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } .final-cta-section { margin-left: 24px; margin-right: 24px; padding: 48px; } .home-kit-selector { padding-left: 24px; padding-right: 24px; } }
 @media (min-width: 900px) { .site-nav-links { display: flex; } .hero-section { padding-bottom: 128px; padding-top: 112px; } .hero-copy h1 { font-size: 72px; } .intro-section { grid-template-columns: minmax(0, 1fr) minmax(0, .82fr); padding-bottom: 128px; padding-top: 96px; } .intro-section h2, .library-heading h2, .how-section h2, .faq-section h2 { font-size: 48px; } .tagline-section { padding-bottom: 128px; padding-top: 128px; } .tagline-section .display-font { font-size: 48px; } .moments-section { padding-bottom: 128px; padding-top: 128px; } .guide-moment { gap: 80px; grid-template-columns: minmax(0,1fr) minmax(0,.76fr); } .guide-moment-reverse .guide-moment-media { order: 2; } .guide-moment + .guide-moment { margin-top: 128px; } .guide-moment-copy h3 { font-size: 36px; } .library-section { padding-bottom: 128px; } .library-grid { gap: 12px; } .home-story-section { min-height: 560px; padding-bottom: 128px; padding-top: 128px; } .home-story-copy h2 { font-size: 56px; } .how-section { padding-bottom: 128px; padding-top: 128px; } .how-section ol { grid-template-columns: repeat(3,minmax(0,1fr)); } .faq-section { grid-template-columns: minmax(0,.72fr) minmax(0,1fr); padding-bottom: 128px; padding-top: 96px; } .final-cta-section { grid-template-columns: minmax(0,1fr) 240px; margin: 0 auto 128px; max-width: 1152px; } .final-cta-cover { max-width: 205px; } .home-kit-selector { padding-bottom: 128px; padding-top: 112px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } .booklet, .booklet:hover { transform: none; } }

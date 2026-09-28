@@ -17,10 +17,12 @@ const mocks = vi.hoisted(() => {
     createCheckout: vi.fn(),
     createConfirmationSecret: vi.fn(() => "confirmation-secret-which-is-long-enough"),
     isValidIdempotencyKey: vi.fn((value: string | null): value is string => Boolean(value)),
+    logOperationalEvent: vi.fn(),
   };
 });
 
 vi.mock("@/lib/checkout", () => mocks);
+vi.mock("@/lib/observability/safe-log", () => ({ logOperationalEvent: mocks.logOperationalEvent }));
 
 import { POST } from "@/app/api/checkout/route";
 
@@ -103,8 +105,18 @@ describe("POST /api/checkout", () => {
       error: {
         code: "PAYMENT_UNAVAILABLE",
         message: "We could not start your payment. Please try again.",
+        requestId: expect.any(String),
       },
     });
+    expect(mocks.logOperationalEvent).toHaveBeenCalledWith(
+      "error",
+      "checkout.request_failed",
+      expect.objectContaining({
+        code: "PAYMENT_UNAVAILABLE",
+        stage: "unknown",
+        status: 502,
+      }),
+    );
   });
 
   it("requires a browser supplied idempotency key", async () => {

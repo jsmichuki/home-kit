@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createSupabaseAdminClient: vi.fn(),
+  logOperationalEvent: vi.fn(),
   ordersUpdate: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/admin", () => mocks);
+vi.mock("@/lib/observability/safe-log", () => ({ logOperationalEvent: mocks.logOperationalEvent }));
 
 import {
   CheckoutServiceError,
@@ -115,6 +117,11 @@ describe("createCheckout", () => {
     } satisfies Partial<CheckoutServiceError>);
 
     expect(mocks.ordersUpdate).not.toHaveBeenCalled();
+    expect(mocks.logOperationalEvent).toHaveBeenCalledWith(
+      "error",
+      "checkout.paystack_initialize_failed",
+      expect.objectContaining({ publicOrderId: expect.stringMatching(/^ord_/) }),
+    );
   });
 
   it("leaves the transaction reference for Paystack to append to the callback", async () => {

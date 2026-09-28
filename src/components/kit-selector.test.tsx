@@ -9,6 +9,7 @@ const draftStorageKey = "home-kit-selection";
 describe("KitSelector", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.history.replaceState({}, "", "/");
   });
 
   afterEach(() => {
@@ -35,22 +36,18 @@ describe("KitSelector", () => {
     expect(continueButton).toBeEnabled();
   });
 
-  it("supports keyboard selection with native checkbox semantics", async () => {
+  it("supports keyboard selection of the complete set with native checkbox semantics", async () => {
     const user = userEvent.setup();
 
     render(<KitSelector guides={GUIDES} />);
 
-    const firstGuide = screen.getByRole("checkbox", { name: /first 30 days/i });
-    const firstPreview = screen.getAllByRole("link", { name: /preview guide/i })[0];
+    const completeSet = screen.getByRole("checkbox", { name: /complete new homeowner system/i });
 
     await user.tab();
-    expect(firstGuide).toHaveFocus();
+    expect(completeSet).toHaveFocus();
 
     await user.keyboard(" ");
-    expect(firstGuide).toBeChecked();
-
-    await user.tab();
-    expect(firstPreview).toHaveFocus();
+    expect(completeSet).toBeChecked();
   });
 
   it("replaces the complete set when an individual guide is selected", async () => {
@@ -128,6 +125,18 @@ describe("KitSelector", () => {
     ).toBeEnabled();
   });
 
+  it("preselects the complete set from a campaign link", async () => {
+    window.history.pushState({}, "", "/?selection=complete#kit-selector");
+
+    render(<KitSelector guides={GUIDES} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("checkbox", { name: /complete new homeowner system/i }),
+      ).toBeChecked();
+    });
+  });
+
   it("submits only email and product IDs and retains the draft after an initialization failure", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue(
@@ -162,6 +171,7 @@ describe("KitSelector", () => {
     );
 
     expect(screen.getByText(/we could not start your payment/i)).toBeInTheDocument();
+    expect(screen.getByText("Secure checkout could not start.")).toBeInTheDocument();
     expect(window.localStorage.getItem(draftStorageKey)).toContain("buyer@example.com");
 
     await user.click(screen.getByRole("button", { name: /pay securely/i }));

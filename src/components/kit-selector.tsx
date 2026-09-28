@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   COMPLETE_SET,
   formatPrice,
@@ -40,7 +41,16 @@ function readStoredDraft(): StoredDraft | null {
   }
 }
 
+function formatCheckoutError(error: CheckoutError) {
+  if (!error.requestId) {
+    return error.message;
+  }
+
+  return `${error.message} If it keeps happening, contact support and include reference ${error.requestId}.`;
+}
+
 export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorProps) {
+  const searchParams = useSearchParams();
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -55,6 +65,10 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
     () => new Set([...guides.map((guide) => guide.id), completeSet.id]),
     [completeSet.id, guides],
   );
+  const completeSetRequested = (searchParams?.get("selection")
+    ?? (typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("selection"))) === "complete";
   const completeSetSelected = selectedProductIds.includes(completeSet.id);
   const selectedGuides = guides.filter((guide) =>
     selectedProductIds.includes(guide.id),
@@ -85,7 +99,10 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
     const frame = window.requestAnimationFrame(() => {
       const draft = readStoredDraft();
 
-      if (draft) {
+      if (completeSetRequested) {
+        setSelectedProductIds([completeSet.id]);
+        setStatusMessage(`The complete set includes all ${guides.length} guides.`);
+      } else if (draft) {
         const restoredProductIds = (draft.productIds ?? []).filter((id) =>
           allowedProductIds.has(id),
         );
@@ -103,7 +120,7 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [allowedProductIds, completeSet.id]);
+  }, [allowedProductIds, completeSet.id, completeSetRequested, guides.length]);
 
   useEffect(() => {
     if (!hasRestoredDraft) {
@@ -196,7 +213,7 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
         idempotencyKeyRef.current = null;
         setFormError(
           result && "error" in result
-            ? result.error.message
+            ? formatCheckoutError(result.error)
             : "We could not start your payment. Please try again.",
         );
         window.requestAnimationFrame(() => errorSummaryRef.current?.focus());
@@ -236,52 +253,13 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
               tabIndex={-1}
             >
               <h3 id="selection-error-heading" className="text-base font-semibold">
-                There is a problem with your selection.
+                Secure checkout could not start.
               </h3>
               <p className="mt-1 text-sm">{formError}</p>
             </div>
           ) : null}
           <fieldset className="grid gap-3">
             <legend className="sr-only">Choose your guides</legend>
-            {guides.map((guide) => {
-              const checked = selectedProductIds.includes(guide.id);
-
-              return (
-                <div key={guide.id} className="rounded-lg border border-stone-300 bg-white">
-                  <label className="flex min-h-11 cursor-pointer items-start gap-3 p-4 text-left transition-colors duration-200 hover:bg-stone-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-2">
-                  <input
-                    checked={checked}
-                    className="mt-1 size-5 accent-stone-950"
-                    disabled={isCreatingCheckout}
-                    name="guides"
-                    onChange={() => toggleGuide(guide.id)}
-                    type="checkbox"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-base font-semibold text-stone-950">
-                      {guide.title}
-                    </span>
-                    <span className="mt-1 block text-sm text-stone-700">
-                      {guide.description}
-                    </span>
-                    <span className="mt-2 block text-sm text-stone-600">
-                      Includes {guide.includedFiles.join(" and ")}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-base font-semibold text-stone-950">
-                    {formatPrice(guide.priceInCents)}
-                  </span>
-                  </label>
-                  <Link
-                    className="inline-flex min-h-11 items-center px-4 py-2 text-sm font-semibold text-stone-950 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-inset"
-                    href={`/guides/${guide.slug}`}
-                  >
-                    Preview guide
-                  </Link>
-                </div>
-              );
-            })}
-
             <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-stone-950 bg-stone-100 p-4 text-left transition-colors duration-200 hover:bg-stone-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-2">
               <input
                 checked={completeSetSelected}
@@ -306,19 +284,70 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
                 {formatPrice(completeSet.priceInCents)}
               </span>
             </label>
+            <details className="group rounded-lg border border-stone-300 bg-white">
+              <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 p-4 text-base font-semibold text-stone-950 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-inset">
+                Build a custom kit instead
+                <span aria-hidden="true" className="text-xl font-normal transition-transform duration-200 group-open:rotate-45">+</span>
+              </summary>
+              <div className="grid gap-3 border-t border-stone-200 p-3">
+                {guides.map((guide) => {
+                  const checked = selectedProductIds.includes(guide.id);
+
+                  return (
+                    <div key={guide.id} className="rounded-lg border border-stone-300 bg-white">
+                      <label className="flex min-h-11 cursor-pointer items-start gap-3 p-4 text-left transition-colors duration-200 hover:bg-stone-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-stone-950 has-[:focus-visible]:ring-offset-2">
+                        <input
+                          checked={checked}
+                          className="mt-1 size-5 accent-stone-950"
+                          disabled={isCreatingCheckout}
+                          name="guides"
+                          onChange={() => toggleGuide(guide.id)}
+                          type="checkbox"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-base font-semibold text-stone-950">
+                            {guide.title}
+                          </span>
+                          <span className="mt-1 block text-sm text-stone-700">
+                            {guide.description}
+                          </span>
+                          <span className="mt-2 block text-sm text-stone-600">
+                            Includes {guide.includedFiles.join(" and ")}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-base font-semibold text-stone-950">
+                          {formatPrice(guide.priceInCents)}
+                        </span>
+                      </label>
+                      <Link
+                        className="inline-flex min-h-11 items-center px-4 py-2 text-sm font-semibold text-stone-950 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-inset"
+                        href={`/guides/${guide.slug}`}
+                      >
+                        Preview guide
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
           </fieldset>
 
-          <aside className="h-fit rounded-lg border border-stone-300 bg-white p-4 lg:sticky lg:top-6">
+          <aside className="order-first h-fit rounded-lg border border-stone-300 bg-white p-4 lg:order-none lg:sticky lg:top-6">
             <h3 className="text-lg font-semibold text-stone-950">Your selection</h3>
             <p aria-live="polite" className="mt-2 text-sm text-stone-700">
               {selectionSummary}
             </p>
             {completeSetSelected ? (
-              <ul className="mt-4 space-y-1 text-sm text-stone-700">
-                {guides.map((guide) => (
-                  <li key={guide.id}>{guide.title}</li>
-                ))}
-              </ul>
+              <details className="mt-4 text-sm text-stone-700">
+                <summary className="cursor-pointer font-semibold text-stone-950 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2">
+                  See all included guides
+                </summary>
+                <ul className="mt-3 space-y-1">
+                  {guides.map((guide) => (
+                    <li key={guide.id}>{guide.title}</li>
+                  ))}
+                </ul>
+              </details>
             ) : selectedGuides.length > 0 ? (
               <ul className="mt-4 space-y-1 text-sm text-stone-700">
                 {selectedGuides.map((guide) => (
@@ -401,7 +430,10 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
               </p>
             ) : null}
             <p className="mt-3 text-sm text-stone-700">
-              Card payment is handled securely by Paystack. No account is required.
+              Secure card payment is handled by Paystack. Your download link is sent after payment confirmation.
+            </p>
+            <p className="mt-2 text-sm text-stone-700">
+              Need help with delivery or access? Read our <Link className="underline underline-offset-4" href="/delivery">delivery policy</Link> and <Link className="underline underline-offset-4" href="/refunds">refund policy</Link>.
             </p>
             {statusMessage ? (
               <p aria-live="polite" className="mt-3 text-sm text-stone-800">
@@ -415,9 +447,11 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
   );
 }
 
+type CheckoutError = { code: string; message: string; requestId?: string };
+
 type CheckoutResponse =
   | { authorizationUrl: string }
-  | { error: { code: string; message: string } };
+  | { error: CheckoutError };
 
 function createIdempotencyKey() {
   if (typeof window.crypto.randomUUID === "function") {
