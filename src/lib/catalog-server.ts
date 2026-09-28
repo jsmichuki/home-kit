@@ -1,7 +1,11 @@
 import "server-only";
 
 import { COMPLETE_SET, GUIDES, type Bundle, type Guide } from "@/lib/catalog";
+import { logOperationalEvent } from "@/lib/observability/safe-log";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+const CATALOGUE_RETRY_DELAY_MS = 750;
+const RETRYABLE_CATALOGUE_STATUSES = new Set([0, 408, 429, 500, 502, 503, 504, 520]);
 
 type DatabaseGuide = {
   current_version: number;
@@ -44,6 +48,96 @@ type DatabaseBundlePrice = {
   bundle_id: string;
 };
 
+type QueryResult = {
+  error: {
+    code?: string | null;
+    hint?: string | null;
+    message?: string | null;
+  } | null;
+  status?: number | null;
+};
+
+type CatalogueLoadOperation = "complete_set" | "guides";
+
+type CatalogueQueryFailure = {
+  code: string | null;
+  hint: string | null;
+  message: string | null;
+  query: string;
+  status: number | null;
+};
+
+class CatalogueLoadError extends Error {
+  constructor(
+    message: string,
+    readonly operation: CatalogueLoadOperation,
+    readonly failures: readonly CatalogueQueryFailure[],
+  ) {
+    super(message);
+    this.name = "CatalogueLoadError";
+  }
+
+  get isTransient() {
+    return this.failures.every((failure) =>
+      failure.status !== null && RETRYABLE_CATALOGUE_STATUSES.has(failure.status),
+    );
+  }
+}
+
+function getQueryFailures(
+  results: Readonly<Record<string, QueryResult>>,
+): CatalogueQueryFailure[] {
+  return Object.entries(results).flatMap(([query, result]) =>
+    result.error
+      ? [{
+        code: result.error.code ?? null,
+        hint: result.error.hint ?? null,
+        message: result.error.message ?? null,
+        query,
+        status: result.status ?? null,
+      }]
+      : [],
+  );
+}
+
+function throwCatalogueLoadError(
+  operation: CatalogueLoadOperation,
+  message: string,
+  results: Readonly<Record<string, QueryResult>>,
+): never {
+  const failures = getQueryFailures(results);
+
+  logOperationalEvent("error", "catalogue.load_failed", { failures, operation });
+  throw new CatalogueLoadError(message, operation, failures);
+}
+
+function waitForCatalogueRetry() {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, CATALOGUE_RETRY_DELAY_MS);
+  });
+}
+
+async function retryTransientCatalogueLoad<T>(
+  operation: CatalogueLoadOperation,
+  load: () => Promise<T>,
+) {
+  try {
+    return await load();
+  } catch (error) {
+    if (!(error instanceof CatalogueLoadError) || !error.isTransient) {
+      throw error;
+    }
+
+    logOperationalEvent("warn", "catalogue.load_retrying", {
+      delayMs: CATALOGUE_RETRY_DELAY_MS,
+      failures: error.failures,
+      operation,
+    });
+    await waitForCatalogueRetry();
+    return load();
+  }
+}
+
 function hasSupabaseServerCredentials() {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
 }
@@ -65,6 +159,10 @@ function assertSupabaseConfigurationIsComplete() {
  * configured.
  */
 export async function getActiveGuideCatalogue(): Promise<readonly Guide[]> {
+  return retryTransientCatalogueLoad("guides", loadActiveGuideCatalogue);
+}
+
+async function loadActiveGuideCatalogue(): Promise<readonly Guide[]> {
   assertSupabaseConfigurationIsComplete();
 
   if (!hasSupabaseServerCredentials()) {
@@ -93,7 +191,11 @@ export async function getActiveGuideCatalogue(): Promise<readonly Guide[]> {
   ]);
 
   if (guidesResult.error || assetsResult.error || pricesResult.error) {
-    throw new Error("We could not load the active guide catalogue.");
+    throwCatalogueLoadError(
+      "guides",
+      "We could not load the active guide catalogue.",
+      { assets: assetsResult, guides: guidesResult, prices: pricesResult },
+    );
   }
 
   const assetsByGuide = new Map<string, DatabaseGuideAsset[]>();
@@ -144,6 +246,10 @@ export async function getActiveGuideCatalogue(): Promise<readonly Guide[]> {
  * change. The static value is only for unconfigured local builds.
  */
 export async function getActiveCompleteSet(): Promise<Bundle> {
+  return retryTransientCatalogueLoad("complete_set", loadActiveCompleteSet);
+}
+
+async function loadActiveCompleteSet(): Promise<Bundle> {
   assertSupabaseConfigurationIsComplete();
 
   if (!hasSupabaseServerCredentials()) {
@@ -172,7 +278,15 @@ export async function getActiveCompleteSet(): Promise<Bundle> {
       .or(`active_until.is.null,active_until.gt.${requestedAt}`),
   ]);
 
-  if (bundleResult.error || bundleGuidesResult.error || pricesResult.error || !bundleResult.data) {
+  if (bundleResult.error || bundleGuidesResult.error || pricesResult.error) {
+    throwCatalogueLoadError(
+      "complete_set",
+      "We could not load the complete set.",
+      { bundle: bundleResult, bundleGuides: bundleGuidesResult, prices: pricesResult },
+    );
+  }
+
+  if (!bundleResult.data) {
     throw new Error("We could not load the complete set.");
   }
 

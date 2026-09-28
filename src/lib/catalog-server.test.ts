@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createSupabaseAdminClient: vi.fn(),
+  logOperationalEvent: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/admin", () => mocks);
+vi.mock("@/lib/observability/safe-log", () => mocks);
 
 import { getActiveGuideCatalogue } from "@/lib/catalog-server";
 
@@ -103,5 +105,65 @@ describe("getActiveGuideCatalogue", () => {
       "Supabase server configuration is incomplete.",
     );
     expect(mocks.createSupabaseAdminClient).not.toHaveBeenCalled();
+  });
+
+  it("logs and retries a transient catalogue query failure once", async () => {
+    const guideOrder = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          code: "PGRST000",
+          hint: "Try again shortly.",
+          message: "The database is temporarily unavailable.",
+        },
+        status: 503,
+      })
+      .mockResolvedValueOnce({ data: [guide], error: null, status: 200 });
+    const guideFilter = vi.fn().mockReturnValue({ order: guideOrder });
+    const guideSelect = vi.fn().mockReturnValue({ eq: guideFilter });
+    const assetsSelect = vi.fn().mockResolvedValue({
+      data: [{ display_name: "First guide.pdf", guide_id: guide.id, version: 1 }],
+      error: null,
+      status: 200,
+    });
+    const priceOr = vi.fn().mockResolvedValue({
+      data: [{ active_from: "2026-09-01T00:00:00.000Z", amount_in_subunits: 1600, guide_id: guide.id }],
+      error: null,
+      status: 200,
+    });
+    const priceLte = vi.fn().mockReturnValue({ or: priceOr });
+    const priceCurrency = vi.fn().mockReturnValue({ lte: priceLte });
+    const pricesSelect = vi.fn().mockReturnValue({ eq: priceCurrency });
+    const from = vi.fn((table: string) => {
+      if (table === "commerce_guides") {
+        return { select: guideSelect };
+      }
+
+      if (table === "commerce_guide_assets") {
+        return { select: assetsSelect };
+      }
+
+      return { select: pricesSelect };
+    });
+
+    mocks.createSupabaseAdminClient.mockReturnValue({ from });
+
+    await expect(getActiveGuideCatalogue()).resolves.toHaveLength(1);
+
+    expect(guideOrder).toHaveBeenCalledTimes(2);
+    expect(mocks.logOperationalEvent).toHaveBeenCalledWith(
+      "error",
+      "catalogue.load_failed",
+      expect.objectContaining({
+        failures: [expect.objectContaining({ query: "guides", status: 503 })],
+        operation: "guides",
+      }),
+    );
+    expect(mocks.logOperationalEvent).toHaveBeenCalledWith(
+      "warn",
+      "catalogue.load_retrying",
+      expect.objectContaining({ operation: "guides" }),
+    );
   });
 });
