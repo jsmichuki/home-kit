@@ -24,6 +24,16 @@ const guide = {
 const previousUrl = process.env.SUPABASE_URL;
 const previousSecret = process.env.SUPABASE_SECRET_KEY;
 
+function resolveRetryDelaysImmediately() {
+  return vi.spyOn(global, "setTimeout").mockImplementation(((callback: Parameters<typeof setTimeout>[0]) => {
+    if (typeof callback === "function") {
+      callback();
+    }
+
+    return 0 as unknown as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout);
+}
+
 describe("getActiveGuideCatalogue", () => {
   beforeEach(() => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
@@ -43,6 +53,7 @@ describe("getActiveGuideCatalogue", () => {
       process.env.SUPABASE_SECRET_KEY = previousSecret;
     }
 
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -108,6 +119,8 @@ describe("getActiveGuideCatalogue", () => {
   });
 
   it("logs and retries a transient catalogue query failure once", async () => {
+    resolveRetryDelaysImmediately();
+
     const guideOrder = vi
       .fn()
       .mockResolvedValueOnce({
@@ -164,6 +177,72 @@ describe("getActiveGuideCatalogue", () => {
       "warn",
       "catalogue.load_retrying",
       expect.objectContaining({ operation: "guides" }),
+    );
+  });
+
+  it("retries Supabase's exact future-issued JWT failure with exponential backoff", async () => {
+    const retryDelay = resolveRetryDelaysImmediately();
+    const futureJwtError = {
+      code: "PGRST303",
+      hint: null,
+      message: "JWT issued at future",
+    };
+    const guideOrder = vi
+      .fn()
+      .mockResolvedValueOnce({ data: null, error: futureJwtError, status: 401 })
+      .mockResolvedValueOnce({ data: null, error: futureJwtError, status: 401 })
+      .mockResolvedValueOnce({ data: null, error: futureJwtError, status: 401 })
+      .mockResolvedValueOnce({ data: null, error: futureJwtError, status: 401 })
+      .mockResolvedValueOnce({ data: [guide], error: null, status: 200 });
+    const guideFilter = vi.fn().mockReturnValue({ order: guideOrder });
+    const guideSelect = vi.fn().mockReturnValue({ eq: guideFilter });
+    const assetsSelect = vi.fn().mockResolvedValue({
+      data: [{ display_name: "First guide.pdf", guide_id: guide.id, version: 1 }],
+      error: null,
+      status: 200,
+    });
+    const priceOr = vi.fn().mockResolvedValue({
+      data: [{ active_from: "2026-09-01T00:00:00.000Z", amount_in_subunits: 1600, guide_id: guide.id }],
+      error: null,
+      status: 200,
+    });
+    const priceLte = vi.fn().mockReturnValue({ or: priceOr });
+    const priceCurrency = vi.fn().mockReturnValue({ lte: priceLte });
+    const pricesSelect = vi.fn().mockReturnValue({ eq: priceCurrency });
+    const from = vi.fn((table: string) => {
+      if (table === "commerce_guides") {
+        return { select: guideSelect };
+      }
+
+      if (table === "commerce_guide_assets") {
+        return { select: assetsSelect };
+      }
+
+      return { select: pricesSelect };
+    });
+
+    mocks.createSupabaseAdminClient.mockReturnValue({ from });
+
+    await expect(getActiveGuideCatalogue()).resolves.toHaveLength(1);
+
+    expect(guideOrder).toHaveBeenCalledTimes(5);
+    expect(retryDelay).toHaveBeenNthCalledWith(1, expect.any(Function), 1_000);
+    expect(retryDelay).toHaveBeenNthCalledWith(2, expect.any(Function), 2_000);
+    expect(retryDelay).toHaveBeenNthCalledWith(3, expect.any(Function), 4_000);
+    expect(retryDelay).toHaveBeenNthCalledWith(4, expect.any(Function), 8_000);
+    expect(mocks.logOperationalEvent).toHaveBeenCalledWith(
+      "warn",
+      "catalogue.load_retrying",
+      expect.objectContaining({
+        attempt: 4,
+        delayMs: 8_000,
+        failures: [expect.objectContaining({
+          code: "PGRST303",
+          message: "JWT issued at future",
+          status: 401,
+        })],
+        operation: "guides",
+      }),
     );
   });
 });

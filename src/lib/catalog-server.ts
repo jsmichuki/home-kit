@@ -4,8 +4,12 @@ import { COMPLETE_SET, GUIDES, type Bundle, type Guide } from "@/lib/catalog";
 import { logOperationalEvent } from "@/lib/observability/safe-log";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const CATALOGUE_RETRY_DELAY_MS = 750;
+const CATALOGUE_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000] as const;
 const RETRYABLE_CATALOGUE_STATUSES = new Set([0, 408, 429, 500, 502, 503, 504, 520]);
+const JWT_ISSUED_IN_FUTURE_FAILURE = {
+  code: "PGRST303",
+  message: "JWT issued at future",
+} as const;
 
 type DatabaseGuide = {
   current_version: number;
@@ -78,8 +82,13 @@ class CatalogueLoadError extends Error {
   }
 
   get isTransient() {
-    return this.failures.every((failure) =>
-      failure.status !== null && RETRYABLE_CATALOGUE_STATUSES.has(failure.status),
+    return this.failures.length > 0 && this.failures.every((failure) =>
+      (failure.status !== null && RETRYABLE_CATALOGUE_STATUSES.has(failure.status))
+      || (
+        failure.status === 401
+        && failure.code === JWT_ISSUED_IN_FUTURE_FAILURE.code
+        && failure.message === JWT_ISSUED_IN_FUTURE_FAILURE.message
+      ),
     );
   }
 }
@@ -111,9 +120,9 @@ function throwCatalogueLoadError(
   throw new CatalogueLoadError(message, operation, failures);
 }
 
-function waitForCatalogueRetry() {
+function waitForCatalogueRetry(delayMs: number) {
   return new Promise<void>((resolve) => {
-    setTimeout(resolve, CATALOGUE_RETRY_DELAY_MS);
+    setTimeout(resolve, delayMs);
   });
 }
 
@@ -121,21 +130,25 @@ async function retryTransientCatalogueLoad<T>(
   operation: CatalogueLoadOperation,
   load: () => Promise<T>,
 ) {
-  try {
-    return await load();
-  } catch (error) {
-    if (!(error instanceof CatalogueLoadError) || !error.isTransient) {
-      throw error;
-    }
+  for (const [attempt, delayMs] of CATALOGUE_RETRY_DELAYS_MS.entries()) {
+    try {
+      return await load();
+    } catch (error) {
+      if (!(error instanceof CatalogueLoadError) || !error.isTransient) {
+        throw error;
+      }
 
-    logOperationalEvent("warn", "catalogue.load_retrying", {
-      delayMs: CATALOGUE_RETRY_DELAY_MS,
-      failures: error.failures,
-      operation,
-    });
-    await waitForCatalogueRetry();
-    return load();
+      logOperationalEvent("warn", "catalogue.load_retrying", {
+        attempt: attempt + 1,
+        delayMs,
+        failures: error.failures,
+        operation,
+      });
+      await waitForCatalogueRetry(delayMs);
+    }
   }
+
+  return load();
 }
 
 function hasSupabaseServerCredentials() {

@@ -34,7 +34,7 @@ export function TaglineReveal({ children }: TaglineRevealProps) {
     >
       {words.map((word, index) => (
         <span className="reveal-word" key={`${word}-${index}`} style={{ transitionDelay: `${index * 65}ms` }}>
-          {word}{" "}
+          {word}
         </span>
       ))}
     </p>

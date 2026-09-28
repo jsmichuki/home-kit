@@ -60,6 +60,8 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
   const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
   const [formError, setFormError] = useState("");
   const [isCheckoutSheetOpen, setIsCheckoutSheetOpen] = useState(false);
+  const [isSelectorInView, setIsSelectorInView] = useState(false);
+  const selectorRef = useRef<HTMLElement>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const mobileEmailRef = useRef<HTMLInputElement>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
@@ -99,6 +101,23 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
   useEffect(() => {
     if (hasRestoredDraft) window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ email, productIds: selectedProductIds }));
   }, [email, hasRestoredDraft, selectedProductIds]);
+
+  useEffect(() => {
+    const selector = selectorRef.current;
+    if (!selector) return;
+    if (!("IntersectionObserver" in window)) {
+      setIsSelectorInView(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsSelectorInView(entry.isIntersecting),
+      { threshold: 0.02 },
+    );
+    observer.observe(selector);
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!isCheckoutSheetOpen) return;
@@ -205,7 +224,7 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
   };
 
   return (
-    <section aria-labelledby="kit-selector-heading" className="kit-selector">
+    <section aria-labelledby="kit-selector-heading" className={`kit-selector ${isSelectorInView ? "is-in-view" : ""}`} ref={selectorRef}>
       <div className="kit-selector-shell">
         <div className="kit-selector-intro"><h2 id="kit-selector-heading">Choose your homeowner guides</h2><p>Keep every homeowner task in one place, or pick the guides that fit your needs.</p></div>
         <form aria-busy={isCreatingCheckout} className="kit-selector-form" onSubmit={handleSubmit}>
@@ -233,7 +252,7 @@ export function KitSelector({ completeSet = COMPLETE_SET, guides }: KitSelectorP
             <div className="desktop-checkout">{emailField("customer-email")}<button className="pay-button" disabled={!canPay} type="submit">{isCreatingCheckout ? "Starting secure payment" : "Pay securely"}</button><CheckoutNotes /></div>
             {statusMessage ? <p aria-live="polite" className="selection-status">{statusMessage}</p> : null}
           </aside>
-          <div className="mobile-checkout-bar" aria-live="polite"><span><strong>{guideCount} guide{guideCount === 1 ? "" : "s"} selected</strong><b>{formatPrice(total)} total</b></span><button disabled={!canOpenCheckout} onClick={openCheckoutSheet} type="button">Continue to checkout <ArrowIcon /></button></div>
+          <div aria-hidden={!isSelectorInView} className="mobile-checkout-bar" aria-live="polite"><span><strong>{guideCount} guide{guideCount === 1 ? "" : "s"} selected</strong><b>{formatPrice(total)} total</b></span><button disabled={!canOpenCheckout} onClick={openCheckoutSheet} tabIndex={isSelectorInView ? 0 : -1} type="button">Continue to checkout <ArrowIcon /></button></div>
           {isCheckoutSheetOpen ? <div className="checkout-sheet-layer"><button aria-label="Close checkout" className="checkout-sheet-scrim" disabled={isCreatingCheckout} onClick={() => setIsCheckoutSheetOpen(false)} type="button" /><section aria-labelledby="checkout-sheet-heading" aria-modal="true" className="checkout-sheet" role="dialog"><div className="checkout-sheet-handle" /><div className="checkout-sheet-heading"><div><p>{guideCount} guide{guideCount === 1 ? "" : "s"} selected · {formatPrice(total)}</p><h3 id="checkout-sheet-heading">Where should we send your guides?</h3></div><button aria-label="Close checkout" disabled={isCreatingCheckout} onClick={() => setIsCheckoutSheetOpen(false)} type="button"><CloseIcon /></button></div>{formError ? <CheckoutErrorMessage error={formError} errorRef={errorSummaryRef} /> : null}<div className="checkout-sheet-form">{emailField("customer-email-mobile", mobileEmailRef)}<button className="pay-button" disabled={!canPay} type="submit">{isCreatingCheckout ? "Starting secure payment" : "Pay securely"}</button><CheckoutNotes /></div></section></div> : null}
         </form>
       </div>
