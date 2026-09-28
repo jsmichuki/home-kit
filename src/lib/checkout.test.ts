@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createSupabaseAdminClient: vi.fn(),
   logOperationalEvent: vi.fn(),
+  ordersInsert: vi.fn(),
   ordersUpdate: vi.fn(),
 }));
 
@@ -27,8 +28,9 @@ describe("createCheckout", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection lost")));
 
     mocks.ordersUpdate.mockReset();
+    mocks.ordersInsert.mockReset();
     const ordersTable = {
-      insert: vi.fn().mockReturnValue({
+      insert: mocks.ordersInsert.mockReturnValue({
         select: vi.fn().mockReturnValue({
           maybeSingle: vi.fn().mockResolvedValue({ data: { id: "order-id" }, error: null }),
         }),
@@ -162,5 +164,33 @@ describe("createCheckout", () => {
     expect(paymentCallback.pathname).toBe("/payment/confirmation");
     expect(paymentCallback.searchParams.get("confirmation")).toBe("confirmation-secret");
     expect(paymentCallback.searchParams.has("reference")).toBe(false);
+  });
+
+  it("uses a database-safe public order ID", async () => {
+    const callbackUrl = "https://checkout.paystack.com/authorize";
+    mocks.ordersUpdate.mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      }),
+    });
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const payload = JSON.parse(String(init.body)) as { reference: string };
+
+      return new Response(JSON.stringify({
+        data: { authorization_url: callbackUrl, reference: payload.reference },
+        status: true,
+      }), { status: 200 });
+    }));
+
+    await createCheckout({
+      confirmationSecret: "confirmation-secret",
+      deliveryEmail: "buyer@example.com",
+      idempotencyKey: "idempotency-key",
+      productIds: ["guide-id"],
+    });
+
+    expect(mocks.ordersInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ public_id: expect.stringMatching(/^ord_[a-zA-Z0-9]+$/) }),
+    );
   });
 });

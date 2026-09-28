@@ -99,7 +99,7 @@ export async function createCheckout(
   const selection = resolveCheckoutSelection(catalogue, input.productIds);
   const supabase = createSupabaseAdminClient();
   const idempotencyKeyHash = sha256(input.idempotencyKey);
-  const publicId = `ord_${randomToken(18)}`;
+  const publicId = createPublicOrderId();
   const reference = `order_${publicId}_${randomToken(12)}`;
 
   const { data: insertedOrder, error: insertError } = await supabase
@@ -455,6 +455,13 @@ function requirePaystackSecret() {
 
 function randomToken(bytes: number) {
   return randomBytes(bytes).toString("base64url");
+}
+
+function createPublicOrderId() {
+  // `commerce_orders.public_id` accepts only ASCII letters and digits after
+  // the `ord_` prefix. Base64URL tokens can contain `-` and `_`, so use hex
+  // for this database-facing identifier.
+  return `ord_${randomBytes(18).toString("hex")}`;
 }
 
 function sha256(value: string) {
